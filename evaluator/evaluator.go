@@ -209,6 +209,8 @@ func evalStringRegexpInfixExpression(operator string, left, right object.Object)
 	switch operator {
 	case "=~":
 		return nativeBoolToBooleanObject(rightVal.MatchString(leftVal))
+	case "!~":
+		return nativeBoolToBooleanObject(!rightVal.MatchString(leftVal))
 	default:
 		return newError("unknown operator: %s %s %s",
 			left.Type(), operator, right.Type())

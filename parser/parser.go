@@ -22,13 +22,14 @@ const (
 )
 
 var precedences = map[token.TokenType]int{
-	token.EQ:     EQUALS,
-	token.NOT_EQ: EQUALS,
-	token.RE_EQ:  EQUALS,
-	token.AND:    AND,
-	token.OR:     OR,
-	token.LPAREN: CALL,
-	token.DOT:    DOT,
+	token.EQ:        EQUALS,
+	token.NOT_EQ:    EQUALS,
+	token.RE_EQ:     EQUALS,
+	token.RE_NOT_EQ: EQUALS,
+	token.AND:       AND,
+	token.OR:        OR,
+	token.LPAREN:    CALL,
+	token.DOT:       DOT,
 }
 
 type (
@@ -67,6 +68,7 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerInfix(token.EQ, p.parseInfixExpression)
 	p.registerInfix(token.NOT_EQ, p.parseInfixExpression)
 	p.registerInfix(token.RE_EQ, p.parseInfixExpression)
+	p.registerInfix(token.RE_NOT_EQ, p.parseInfixExpression)
 	p.registerInfix(token.AND, p.parseInfixExpression)
 	p.registerInfix(token.OR, p.parseInfixExpression)
 	p.registerInfix(token.DOT, p.parseInfixExpression)

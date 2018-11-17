@@ -16,9 +16,10 @@ const (
 	DOT  = "."
 
 	// Comparison Operators
-	EQ     = "=="
-	NOT_EQ = "!="
-	RE_EQ  = "=~"
+	EQ        = "=="
+	NOT_EQ    = "!="
+	RE_EQ     = "=~"
+	RE_NOT_EQ = "!~"
 
 	// Boolean Operators
 	AND = "&&"
