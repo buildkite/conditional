@@ -1,7 +1,7 @@
 package lexer
 
 import (
-	"github.com/buildkite/evaluate/token"
+	"github.com/buildkite/condition/token"
 )
 
 type Lexer struct {
@@ -40,10 +40,6 @@ func (l *Lexer) NextToken() token.Token {
 		} else {
 			tok = newToken(token.ILLEGAL, l.ch)
 		}
-	case '+':
-		tok = newToken(token.PLUS, l.ch)
-	case '-':
-		tok = newToken(token.MINUS, l.ch)
 	case '!':
 		if l.peekChar() == '=' {
 			ch := l.ch
@@ -53,6 +49,8 @@ func (l *Lexer) NextToken() token.Token {
 		} else {
 			tok = newToken(token.BANG, l.ch)
 		}
+	case ',':
+		tok = newToken(token.COMMA, l.ch)
 	case '&':
 		if l.peekChar() == '&' {
 			ch := l.ch
@@ -71,12 +69,8 @@ func (l *Lexer) NextToken() token.Token {
 		} else {
 			tok = newToken(token.ILLEGAL, l.ch)
 		}
-	case '<':
-		tok = newToken(token.LT, l.ch)
-	case '>':
-		tok = newToken(token.GT, l.ch)
-	case '*':
-		tok = newToken(token.ASTERISK, l.ch)
+	case '.':
+		tok = newToken(token.DOT, l.ch)
 	case '"':
 		tok.Type = token.STRING
 		tok.Literal = l.readString('"')
@@ -118,7 +112,7 @@ func (l *Lexer) skipWhitespace() {
 }
 
 func (l *Lexer) skipComment() {
-	if l.ch != '#' {
+	if l.ch != '/' || l.peekChar() != '/' {
 		return
 	}
 	for {
@@ -180,13 +174,10 @@ func (l *Lexer) readString(quote byte) string {
 }
 
 func (l *Lexer) readRegex() string {
-	position := l.position
+	position := l.position + 1
 	for {
 		l.readChar()
-		if l.ch == '/' {
-			l.position++
-			break
-		} else if l.ch == 0 {
+		if l.ch == '/' || l.ch == 0 {
 			break
 		}
 	}

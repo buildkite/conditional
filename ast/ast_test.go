@@ -3,7 +3,7 @@ package ast
 import (
 	"testing"
 
-	"github.com/buildkite/evaluate/token"
+	"github.com/buildkite/condition/token"
 )
 
 func TestString(t *testing.T) {

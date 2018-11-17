@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/buildkite/evaluate/repl"
+	"github.com/buildkite/condition/repl"
 )
 
 func main() {
-	fmt.Printf("Buildkite if condition evaluator\n")
+	fmt.Printf("Buildkite condition evaluator\n")
 	repl.Start(os.Stdin, os.Stdout)
 }

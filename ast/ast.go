@@ -2,9 +2,10 @@ package ast
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 
-	"github.com/buildkite/evaluate/token"
+	"github.com/buildkite/condition/token"
 )
 
 // The base Node interface
@@ -47,6 +48,17 @@ func (il *IntegerLiteral) expressionNode()      {}
 func (il *IntegerLiteral) TokenLiteral() string { return il.Token.Literal }
 func (il *IntegerLiteral) String() string       { return il.Token.Literal }
 
+type StringLiteral struct {
+	Token token.Token
+	Value string
+}
+
+func (sl *StringLiteral) expressionNode()      {}
+func (sl *StringLiteral) TokenLiteral() string { return sl.Token.Literal }
+func (sl *StringLiteral) String() string {
+	return fmt.Sprintf("%q", sl.Token.Literal)
+}
+
 type PrefixExpression struct {
 	Token    token.Token // The prefix token, e.g. !
 	Operator string
@@ -80,7 +92,13 @@ func (ie *InfixExpression) String() string {
 
 	out.WriteString("(")
 	out.WriteString(ie.Left.String())
-	out.WriteString(" " + ie.Operator + " ")
+
+	if ie.Operator == token.DOT {
+		out.WriteString(ie.Operator)
+	} else {
+		out.WriteString(" " + ie.Operator + " ")
+	}
+
 	out.WriteString(ie.Right.String())
 	out.WriteString(")")
 
@@ -89,7 +107,7 @@ func (ie *InfixExpression) String() string {
 
 type CallExpression struct {
 	Token     token.Token // The '(' token
-	Function  Expression
+	Function  string
 	Arguments []Expression
 }
 
@@ -103,7 +121,7 @@ func (ce *CallExpression) String() string {
 		args = append(args, a.String())
 	}
 
-	out.WriteString(ce.Function.String())
+	out.WriteString(ce.Function)
 	out.WriteString("(")
 	out.WriteString(strings.Join(args, ", "))
 	out.WriteString(")")

@@ -12,14 +12,10 @@ const (
 	STRING = "STRING" // "foobar"
 	REGEX  = "REGEX"  // /^v1.0/
 
-	PLUS     = "+"
-	MINUS    = "-"
-	BANG     = "!"
-	ASTERISK = "*"
+	BANG = "!"
+	DOT  = "."
 
 	// Comparison Operators
-	LT     = "<"
-	GT     = ">"
 	EQ     = "=="
 	NOT_EQ = "!="
 	RE_EQ  = "=~"
@@ -29,9 +25,7 @@ const (
 	OR  = "||"
 
 	// Delimiters
-	COMMA     = ","
-	SEMICOLON = ";"
-
+	COMMA  = ","
 	LPAREN = "("
 	RPAREN = ")"
 

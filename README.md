@@ -1,27 +1,40 @@
-# Buildkite If Condition Evaluator
+# Buildkite Condition Evaluator
 
-```
-# individual terms
+A small c-like language for evaluating boolean conditions, used in Buildkite's pipeline.yml format and for filtering whether webhooks are accepted.
+
+## What's supported?
+
+* Comparators: `== != =~ !~`
+* Logical operators: `|| &&`
+* Integers `12345`
+* Strings `'foobar' or "foobar"`
+* Booleans `true false`
+* Parenthesis to control order of evaluation `( )`
+* Object dereferencing `foo.bar`
+* Regular expressions `/^v1\.0/`
+* Function calls `foo("bar")`
+* Prefixes: `!`
+
+## Examples:
+
+```c
+// individual terms
 true
 false
 
-# compare values
-1 == 1
-true != false
+// compare values
+build.branch == "master"
+build.tag != "v1.0.0"
 "blah" == 'blah'
 
-# compare function calls
-env(FOO) == env(BAR)
+// function calls
+env('FOO') == "BAR"
+env('FOO') == obj.bar
+env(env('BAR')) == "FOO"
 
-# compare function calls to attributes
-env(FOO) == type
+// regular expression matches
+build.tag =~ /^v/
 
-# nested function calls
-env(env(FOO))
-
-# regular expression matches
-"v1.0.0" =~ ^v
-
-# parenthesis
-((env(TAG) =~ ^v) && (env(BRANCH) = master)) || true
+// complex expressions
+((build.tag =~ ^v) || (meta-data("foo") == "bar"))
 ```

@@ -3,119 +3,102 @@ package lexer
 import (
 	"testing"
 
-	"github.com/buildkite/evaluate/token"
+	"github.com/buildkite/condition/token"
 )
 
-func TestNextToken(t *testing.T) {
-	input := `# individual terms
-	true
-	false
+type tokenExpectation struct {
+	expectedType    token.TokenType
+	expectedLiteral string
+}
 
-	# compare values
-	1 == 1
-	true != "false"
-	"blah" == 'blah' # trailing comment
+func TestLexingIndividualTerms(t *testing.T) {
+	expectTokens(t, `true`, []tokenExpectation{
+		{token.TRUE, `true`},
+	})
+	expectTokens(t, `false`, []tokenExpectation{
+		{token.FALSE, `false`},
+	})
+	expectTokens(t, `"true"`, []tokenExpectation{
+		{token.STRING, `true`},
+	})
+}
 
-	# compare function calls
-	env(FOO) == env(BAR)
-
-	# compare function calls to values
-	env(FOO) == "llamas"
-
-	# nested function calls
-	env(env(FOO))
-
-	# regular expression matches
-	"v1.0.0" =~ /^v/
-
-	# parenthesis
-	((env(TAG) =~ /^v/) && (env(BRANCH) == master)) || true
-`
-
-	tests := []struct {
-		expectedType    token.TokenType
-		expectedLiteral string
-	}{
-		{token.TRUE, "true"},
-		{token.FALSE, "false"},
-
-		{token.INT, "1"},
+func TestLexingValueComparisons(t *testing.T) {
+	expectTokens(t, `build.branch == "master"`, []tokenExpectation{
+		{token.IDENT, "build"},
+		{token.DOT, "."},
+		{token.IDENT, "branch"},
 		{token.EQ, "=="},
-		{token.INT, "1"},
-		{token.TRUE, "true"},
+		{token.STRING, "master"},
+	})
+	expectTokens(t, `(build.tag != "v1.0.0")`, []tokenExpectation{
+		{token.LPAREN, "("},
+		{token.IDENT, "build"},
+		{token.DOT, "."},
+		{token.IDENT, "tag"},
 		{token.NOT_EQ, "!="},
-		{token.STRING, "false"},
-		{token.STRING, "blah"},
-		{token.EQ, "=="},
-		{token.STRING, "blah"},
-
-		{token.IDENT, "env"},
-		{token.LPAREN, "("},
-		{token.IDENT, "FOO"},
-		{token.RPAREN, ")"},
-		{token.EQ, "=="},
-		{token.IDENT, "env"},
-		{token.LPAREN, "("},
-		{token.IDENT, "BAR"},
-		{token.RPAREN, ")"},
-
-		{token.IDENT, "env"},
-		{token.LPAREN, "("},
-		{token.IDENT, "FOO"},
-		{token.RPAREN, ")"},
-		{token.EQ, "=="},
-		{token.STRING, "llamas"},
-
-		{token.IDENT, "env"},
-		{token.LPAREN, "("},
-		{token.IDENT, "env"},
-		{token.LPAREN, "("},
-		{token.IDENT, "FOO"},
-		{token.RPAREN, ")"},
-		{token.RPAREN, ")"},
-
 		{token.STRING, "v1.0.0"},
-		{token.RE_EQ, "=~"},
-		{token.REGEX, "/^v/"},
+		{token.RPAREN, ")"},
+	})
+	expectTokens(t, `"blah" == 'blah'`, []tokenExpectation{
+		{token.STRING, "blah"},
+		{token.EQ, "=="},
+		{token.STRING, "blah"},
+	})
+}
 
-		{token.LPAREN, "("},
-		{token.LPAREN, "("},
+func TestLexingFunctionCalls(t *testing.T) {
+	expectTokens(t, `env('FOO') == "BAR"`, []tokenExpectation{
 		{token.IDENT, "env"},
 		{token.LPAREN, "("},
-		{token.IDENT, "TAG"},
-		{token.RPAREN, ")"},
-		{token.RE_EQ, "=~"},
-		{token.REGEX, "/^v/"},
-		{token.RPAREN, ")"},
-		{token.AND, "&&"},
-		{token.LPAREN, "("},
-		{token.IDENT, "env"},
-		{token.LPAREN, "("},
-		{token.IDENT, "BRANCH"},
+		{token.STRING, "FOO"},
 		{token.RPAREN, ")"},
 		{token.EQ, "=="},
-		{token.IDENT, "master"},
+		{token.STRING, "BAR"},
+	})
+	expectTokens(t, `env(env('BAR')) == "FOO"`, []tokenExpectation{
+		{token.IDENT, "env"},
+		{token.LPAREN, "("},
+		{token.IDENT, "env"},
+		{token.LPAREN, "("},
+		{token.STRING, "BAR"},
 		{token.RPAREN, ")"},
 		{token.RPAREN, ")"},
-		{token.OR, "||"},
-		{token.TRUE, "true"},
+		{token.EQ, "=="},
+		{token.STRING, "FOO"},
+	})
+}
 
-		{token.EOF, ""},
-	}
+func TestLexingRegexs(t *testing.T) {
+	expectTokens(t, `build.tag =~ /^v/`, []tokenExpectation{
+		{token.IDENT, "build"},
+		{token.DOT, "."},
+		{token.IDENT, "tag"},
+		{token.RE_EQ, "=~"},
+		{token.REGEX, "^v"},
+	})
+}
 
+func expectTokens(t *testing.T, input string, expect []tokenExpectation) {
+	t.Helper()
 	l := New(input)
 
-	for i, tt := range tests {
+	for i, tt := range expect {
 		tok := l.NextToken()
 
 		if tok.Type != tt.expectedType {
-			t.Fatalf("tests[%d] - tokentype wrong. expected=%q, got=%q (%q)",
+			t.Fatalf("#%d - tokentype wrong. expected=%q, got=%q (%q)",
 				i, tt.expectedType, tok.Type, tok.Literal)
 		}
 
 		if tok.Literal != tt.expectedLiteral {
-			t.Fatalf("tests[%d] - literal wrong. expected=%q, got=%q",
+			t.Fatalf("#%d - literal wrong. expected=%q, got=%q",
 				i, tt.expectedLiteral, tok.Literal)
 		}
+	}
+
+	if tok := l.NextToken(); tok.Type != token.EOF {
+		t.Fatalf("unexpected extra token, expected=EOF, got=%q (%q)",
+			tok.Type, tok.Literal)
 	}
 }
