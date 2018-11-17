@@ -2,6 +2,7 @@ package object
 
 import (
 	"fmt"
+	"regexp"
 )
 
 type ObjectType string
@@ -13,6 +14,7 @@ const (
 	STRING_OBJ  = "STRING"
 	INTEGER_OBJ = "INTEGER"
 	BOOLEAN_OBJ = "BOOLEAN"
+	REGEXP_OBJ  = "REGEXP"
 
 	STRUCT_OBJ   = "STRUCT"
 	FUNCTION_OBJ = "FUNCTION"
@@ -43,6 +45,13 @@ type String struct {
 
 func (s *String) Type() ObjectType { return STRING_OBJ }
 func (s *String) String() string   { return fmt.Sprintf("%q", s.Value) }
+
+type Regexp struct {
+	*regexp.Regexp
+}
+
+func (r *Regexp) Type() ObjectType { return REGEXP_OBJ }
+func (r *Regexp) String() string   { return r.Regexp.String() }
 
 type Null struct{}
 

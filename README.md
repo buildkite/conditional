@@ -15,7 +15,7 @@ A small c-like language for evaluating boolean conditions, used in Buildkite's p
 * Function calls `foo("bar")`
 * Prefixes: `!`
 
-## Examples:
+## Syntax:
 
 ```c
 // individual terms

@@ -69,13 +69,13 @@ func TestLexingFunctionCalls(t *testing.T) {
 	})
 }
 
-func TestLexingRegexs(t *testing.T) {
+func TestLexingRegexps(t *testing.T) {
 	expectTokens(t, `build.tag =~ /^v/`, []tokenExpectation{
 		{token.IDENT, "build"},
 		{token.DOT, "."},
 		{token.IDENT, "tag"},
 		{token.RE_EQ, "=~"},
-		{token.REGEX, "^v"},
+		{token.REGEXP, "^v"},
 	})
 }
 

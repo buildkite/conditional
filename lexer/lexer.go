@@ -78,7 +78,7 @@ func (l *Lexer) NextToken() token.Token {
 		tok.Type = token.STRING
 		tok.Literal = l.readString('\'')
 	case '/':
-		tok.Type = token.REGEX
+		tok.Type = token.REGEXP
 		tok.Literal = l.readRegex()
 	case '(':
 		tok = newToken(token.LPAREN, l.ch)

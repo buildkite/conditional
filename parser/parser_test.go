@@ -50,6 +50,27 @@ func TestStringLiteralExpression(t *testing.T) {
 	}
 }
 
+func TestRegexpExpression(t *testing.T) {
+	input := `/^llamas?/`
+
+	l := lexer.New(input)
+	p := New(l)
+	expr := p.Parse()
+	checkParserErrors(t, p)
+
+	literal, ok := expr.(*ast.Regexp)
+	if !ok {
+		t.Fatalf("exp not *ast.Regexp. got=%T", expr)
+	}
+	if literal.Regexp.String() != `^llamas?` {
+		t.Errorf("regexp.String() not %q. got=%q", `^llamas?`, literal.Regexp.String())
+	}
+	if literal.TokenLiteral() != `^llamas?` {
+		t.Errorf("regexp.TokenLiteral not %s. got=%s", `^llamas?`,
+			literal.TokenLiteral())
+	}
+}
+
 func TestParsingPrefixExpressions(t *testing.T) {
 	prefixTests := []struct {
 		input    string
@@ -127,6 +148,7 @@ func TestOperatorPrecedenceParsing(t *testing.T) {
 		{"a || b && c", "(a || (b && c))"},
 		{"a && b || c", "((a && b) || c)"},
 		{"env(env(LLAMAS)) == true", "(env(env(LLAMAS)) == true)"},
+		{"a =~ /a/ && b =~ /b/", "((a =~ /a/) && (b =~ /b/))"},
 	}
 
 	for _, tt := range tests {

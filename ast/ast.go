@@ -3,6 +3,7 @@ package ast
 import (
 	"bytes"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/buildkite/condition/token"
@@ -57,6 +58,17 @@ func (sl *StringLiteral) expressionNode()      {}
 func (sl *StringLiteral) TokenLiteral() string { return sl.Token.Literal }
 func (sl *StringLiteral) String() string {
 	return fmt.Sprintf("%q", sl.Token.Literal)
+}
+
+type Regexp struct {
+	*regexp.Regexp
+	Token token.Token
+}
+
+func (r *Regexp) expressionNode()      {}
+func (r *Regexp) TokenLiteral() string { return r.Token.Literal }
+func (r *Regexp) String() string {
+	return fmt.Sprintf("/%s/", r.Token.Literal)
 }
 
 type PrefixExpression struct {

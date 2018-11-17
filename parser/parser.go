@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 
 	"github.com/buildkite/condition/ast"
@@ -23,6 +24,7 @@ const (
 var precedences = map[token.TokenType]int{
 	token.EQ:     EQUALS,
 	token.NOT_EQ: EQUALS,
+	token.RE_EQ:  EQUALS,
 	token.AND:    AND,
 	token.OR:     OR,
 	token.LPAREN: CALL,
@@ -55,6 +57,7 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerPrefix(token.IDENT, p.parseIdentifier)
 	p.registerPrefix(token.INT, p.parseIntegerLiteral)
 	p.registerPrefix(token.STRING, p.parseStringLiteral)
+	p.registerPrefix(token.REGEXP, p.parseRegexp)
 	p.registerPrefix(token.BANG, p.parsePrefixExpression)
 	p.registerPrefix(token.TRUE, p.parseBoolean)
 	p.registerPrefix(token.FALSE, p.parseBoolean)
@@ -63,6 +66,7 @@ func New(l *lexer.Lexer) *Parser {
 	p.infixParseFns = make(map[token.TokenType]infixParseFn)
 	p.registerInfix(token.EQ, p.parseInfixExpression)
 	p.registerInfix(token.NOT_EQ, p.parseInfixExpression)
+	p.registerInfix(token.RE_EQ, p.parseInfixExpression)
 	p.registerInfix(token.AND, p.parseInfixExpression)
 	p.registerInfix(token.OR, p.parseInfixExpression)
 	p.registerInfix(token.DOT, p.parseInfixExpression)
@@ -187,6 +191,20 @@ func (p *Parser) parseIntegerLiteral() ast.Expression {
 
 func (p *Parser) parseStringLiteral() ast.Expression {
 	return &ast.StringLiteral{Token: p.curToken, Value: p.curToken.Literal}
+}
+
+func (p *Parser) parseRegexp() ast.Expression {
+	ar := &ast.Regexp{Token: p.curToken}
+
+	r, err := regexp.Compile(p.curToken.Literal)
+	if err != nil {
+		msg := fmt.Sprintf("could not parse regexp: %v", err)
+		p.errors = append(p.errors, msg)
+		return nil
+	}
+
+	ar.Regexp = r
+	return ar
 }
 
 func (p *Parser) parsePrefixExpression() ast.Expression {

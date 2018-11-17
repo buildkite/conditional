@@ -10,7 +10,7 @@ const (
 	IDENT  = "IDENT"  // add, foobar, x, y, ...
 	INT    = "INT"    // 1343456
 	STRING = "STRING" // "foobar"
-	REGEX  = "REGEX"  // /^v1.0/
+	REGEXP = "REGEXP" // /^v1.0/
 
 	BANG = "!"
 	DOT  = "."

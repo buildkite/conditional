@@ -25,6 +25,9 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 	case *ast.StringLiteral:
 		return &object.String{Value: node.Value}
 
+	case *ast.Regexp:
+		return &object.Regexp{Regexp: node.Regexp}
+
 	case *ast.Boolean:
 		return nativeBoolToBooleanObject(node.Value)
 
@@ -45,7 +48,7 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 		if node.Operator == `.` {
 			ident, ok := node.Right.(*ast.Identifier)
 			if !ok {
-				return newError("Dot operator must receive identifier")
+				return newError("dot operator must receive identifier")
 			}
 			right = &object.String{Value: ident.Value}
 		} else {
@@ -122,6 +125,8 @@ func evalInfixExpression(operator string, left, right object.Object) object.Obje
 		return evalStringInfixExpression(operator, left, right)
 	case left.Type() == object.STRUCT_OBJ && right.Type() == object.STRING_OBJ:
 		return evalDotExpression(left, right)
+	case left.Type() == object.STRING_OBJ && right.Type() == object.REGEXP_OBJ:
+		return evalStringRegexpInfixExpression(operator, left, right)
 	case operator == "==":
 		return nativeBoolToBooleanObject(left == right)
 	case operator == "!=":
@@ -189,6 +194,21 @@ func evalStringInfixExpression(operator string, left, right object.Object) objec
 		return nativeBoolToBooleanObject(leftVal == rightVal)
 	case "!=":
 		return nativeBoolToBooleanObject(leftVal != rightVal)
+	default:
+		return newError("unknown operator: %s %s %s",
+			left.Type(), operator, right.Type())
+	}
+}
+
+func evalStringRegexpInfixExpression(operator string, left, right object.Object) object.Object {
+	defer untrace(trace("evalStringRegexpInfixExpression", operator, left, right))
+
+	leftVal := left.(*object.String).Value
+	rightVal := right.(*object.Regexp).Regexp
+
+	switch operator {
+	case "=~":
+		return nativeBoolToBooleanObject(rightVal.MatchString(leftVal))
 	default:
 		return newError("unknown operator: %s %s %s",
 			left.Type(), operator, right.Type())
