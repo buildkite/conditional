@@ -14,7 +14,7 @@ var (
 )
 
 func Eval(node ast.Node, env *object.Environment) object.Object {
-	defer untrace(trace("Eval", fmt.Sprintf("%T `%s`", node, node.String())))
+	// defer untrace(trace("Eval", fmt.Sprintf("%T `%s`", node, node.String())))
 
 	switch node := node.(type) {
 
@@ -89,12 +89,12 @@ func nativeBoolToBooleanObject(input bool) *object.Boolean {
 }
 
 func applyFunction(fn object.Object, args []object.Object) object.Object {
-	defer untrace(trace("applyFunction", args))
+	// defer untrace(trace("applyFunction", args))
 
 	switch fn := fn.(type) {
 	case *object.Function:
 		ret := fn.Fn(args)
-		tracePrint(fmt.Sprintf("RETURN: %+v", ret))
+		// tracePrint(fmt.Sprintf("RETURN: %+v", ret))
 		return ret
 
 	default:
@@ -103,7 +103,7 @@ func applyFunction(fn object.Object, args []object.Object) object.Object {
 }
 
 func evalPrefixExpression(operator string, right object.Object) object.Object {
-	defer untrace(trace("evalPrefixExpression", operator, right))
+	// defer untrace(trace("evalPrefixExpression", operator, right))
 
 	switch operator {
 	case "!":
@@ -116,7 +116,7 @@ func evalPrefixExpression(operator string, right object.Object) object.Object {
 }
 
 func evalInfixExpression(operator string, left, right object.Object) object.Object {
-	defer untrace(trace("evalInfixExpression", operator, left, right))
+	// defer untrace(trace("evalInfixExpression", operator, left, right))
 
 	switch {
 	case left.Type() == object.INTEGER_OBJ && right.Type() == object.INTEGER_OBJ:
@@ -141,7 +141,7 @@ func evalInfixExpression(operator string, left, right object.Object) object.Obje
 }
 
 func evalBangOperatorExpression(right object.Object) object.Object {
-	defer untrace(trace("evalBangOperatorExpression", right))
+	// defer untrace(trace("evalBangOperatorExpression", right))
 
 	switch right {
 	case TRUE:
@@ -156,7 +156,7 @@ func evalBangOperatorExpression(right object.Object) object.Object {
 }
 
 func evalMinusPrefixOperatorExpression(right object.Object) object.Object {
-	defer untrace(trace("evalMinusPrefixOperatorExpression", right))
+	// defer untrace(trace("evalMinusPrefixOperatorExpression", right))
 
 	if right.Type() != object.INTEGER_OBJ {
 		return newError("unknown operator: -%s", right.Type())
@@ -167,7 +167,7 @@ func evalMinusPrefixOperatorExpression(right object.Object) object.Object {
 }
 
 func evalIntegerInfixExpression(operator string, left, right object.Object) object.Object {
-	defer untrace(trace("evalIntegerInfixExpression", operator, left, right))
+	// defer untrace(trace("evalIntegerInfixExpression", operator, left, right))
 
 	leftVal := left.(*object.Integer).Value
 	rightVal := right.(*object.Integer).Value
@@ -184,7 +184,7 @@ func evalIntegerInfixExpression(operator string, left, right object.Object) obje
 }
 
 func evalStringInfixExpression(operator string, left, right object.Object) object.Object {
-	defer untrace(trace("evalStringInfixExpression", operator, left, right))
+	// defer untrace(trace("evalStringInfixExpression", operator, left, right))
 
 	leftVal := left.(*object.String).Value
 	rightVal := right.(*object.String).Value
@@ -201,7 +201,7 @@ func evalStringInfixExpression(operator string, left, right object.Object) objec
 }
 
 func evalStringRegexpInfixExpression(operator string, left, right object.Object) object.Object {
-	defer untrace(trace("evalStringRegexpInfixExpression", operator, left, right))
+	// defer untrace(trace("evalStringRegexpInfixExpression", operator, left, right))
 
 	leftVal := left.(*object.String).Value
 	rightVal := right.(*object.Regexp).Regexp
@@ -218,7 +218,7 @@ func evalStringRegexpInfixExpression(operator string, left, right object.Object)
 }
 
 func evalDotExpression(s object.Object, prop object.Object) object.Object {
-	defer untrace(trace("evalDotExpression", s, prop))
+	// defer untrace(trace("evalDotExpression", s, prop))
 
 	structVal := s.(*object.Struct)
 	propVal := prop.(*object.String).Value
@@ -233,7 +233,7 @@ func evalDotExpression(s object.Object, prop object.Object) object.Object {
 }
 
 func evalIdentifier(node *ast.Identifier, env *object.Environment) object.Object {
-	defer untrace(trace("evalIdentifier"))
+	// defer untrace(trace("evalIdentifier"))
 
 	val, ok := env.Get(node.Value)
 	if !ok {
@@ -268,7 +268,7 @@ func isError(obj object.Object) bool {
 }
 
 func evalExpressions(exps []ast.Expression, env *object.Environment) []object.Object {
-	defer untrace(trace("evalExpressions", exps))
+	// defer untrace(trace("evalExpressions", exps))
 
 	var result []object.Object
 
