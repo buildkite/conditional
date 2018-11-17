@@ -108,8 +108,6 @@ func evalPrefixExpression(operator string, right object.Object) object.Object {
 	switch operator {
 	case "!":
 		return evalBangOperatorExpression(right)
-	case "-":
-		return evalMinusPrefixOperatorExpression(right)
 	default:
 		return newError("unknown operator: %s%s", operator, right.Type())
 	}
@@ -153,17 +151,6 @@ func evalBangOperatorExpression(right object.Object) object.Object {
 	default:
 		return FALSE
 	}
-}
-
-func evalMinusPrefixOperatorExpression(right object.Object) object.Object {
-	// defer untrace(trace("evalMinusPrefixOperatorExpression", right))
-
-	if right.Type() != object.INTEGER_OBJ {
-		return newError("unknown operator: -%s", right.Type())
-	}
-
-	value := right.(*object.Integer).Value
-	return &object.Integer{Value: -value}
 }
 
 func evalIntegerInfixExpression(operator string, left, right object.Object) object.Object {
@@ -241,19 +228,6 @@ func evalIdentifier(node *ast.Identifier, env *object.Environment) object.Object
 	}
 
 	return val
-}
-
-func isTruthy(obj object.Object) bool {
-	switch obj {
-	case NULL:
-		return false
-	case TRUE:
-		return true
-	case FALSE:
-		return false
-	default:
-		return true
-	}
 }
 
 func newError(format string, a ...interface{}) *object.Error {
