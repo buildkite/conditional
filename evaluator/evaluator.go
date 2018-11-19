@@ -132,6 +132,8 @@ func evalInfixExpression(operator string, left, right object.Object) object.Obje
 		return evalDotExpression(left, right)
 	case left.Type() == object.STRING_OBJ && right.Type() == object.REGEXP_OBJ:
 		return evalStringRegexpInfixExpression(operator, left, right)
+	case left.Type() == object.ARRAY_OBJ && right.Type() == object.STRING_OBJ:
+		return evalStringArrayInfixExpression(operator, left, right)
 	case operator == "==":
 		return nativeBoolToBooleanObject(left == right)
 	case operator == "!=":
@@ -205,6 +207,40 @@ func evalStringRegexpInfixExpression(operator string, left, right object.Object)
 		return nativeBoolToBooleanObject(rightVal.MatchString(leftVal))
 	case "!~":
 		return nativeBoolToBooleanObject(!rightVal.MatchString(leftVal))
+	default:
+		return newError("unknown operator: %s %s %s",
+			left.Type(), operator, right.Type())
+	}
+}
+
+func arrayContains(arr *object.Array, obj object.Object) (bool, error) {
+	// defer untrace(trace("arrayContains", args))
+
+	for idx, el := range arr.Elements {
+		if el.Type() != obj.Type() {
+			return false, fmt.Errorf("type mismatch at index %d in array: %s vs %s",
+				idx, el.Type(), obj.Type())
+		}
+		if el.Equals(obj) {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func evalStringArrayInfixExpression(operator string, left, right object.Object) object.Object {
+	// defer untrace(trace("evalStringArrayInfixExpression", operator, left, right))
+
+	leftVal := left.(*object.Array)
+
+	switch operator {
+	case "@>":
+		contains, err := arrayContains(leftVal, right)
+		if err != nil {
+			return newError(err.Error())
+		}
+		return nativeBoolToBooleanObject(contains)
 	default:
 		return newError("unknown operator: %s %s %s",
 			left.Type(), operator, right.Type())
