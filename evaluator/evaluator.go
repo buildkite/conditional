@@ -132,8 +132,8 @@ func evalInfixExpression(operator string, left, right object.Object) object.Obje
 		return evalDotExpression(left, right)
 	case left.Type() == object.STRING_OBJ && right.Type() == object.REGEXP_OBJ:
 		return evalStringRegexpInfixExpression(operator, left, right)
-	case left.Type() == object.ARRAY_OBJ && right.Type() == object.STRING_OBJ:
-		return evalStringArrayInfixExpression(operator, left, right)
+	case left.Type() == object.ARRAY_OBJ:
+		return evalArrayInfixExpression(operator, left, right)
 	case operator == "==":
 		return nativeBoolToBooleanObject(left == right)
 	case operator == "!=":
@@ -229,7 +229,7 @@ func arrayContains(arr *object.Array, obj object.Object) (bool, error) {
 	return false, nil
 }
 
-func evalStringArrayInfixExpression(operator string, left, right object.Object) object.Object {
+func evalArrayInfixExpression(operator string, left, right object.Object) object.Object {
 	// defer untrace(trace("evalStringArrayInfixExpression", operator, left, right))
 
 	leftVal := left.(*object.Array)

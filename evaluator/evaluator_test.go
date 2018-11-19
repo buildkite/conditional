@@ -106,6 +106,8 @@ func TestContainsOperator(t *testing.T) {
 		expected bool
 	}{
 		{`["llamas","alpacas"] @> 'alpacas'`, true},
+		{`["llamas","alpacas"] @> 'sheep'`, false},
+		{`[1,2,3] @> 2`, true},
 	}
 
 	for _, tt := range tests {
