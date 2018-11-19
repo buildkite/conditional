@@ -269,6 +269,63 @@ func TestCallExpressionParameterParsing(t *testing.T) {
 	}
 }
 
+func TestParsingEmptyArrayLiterals(t *testing.T) {
+	input := "[]"
+
+	l := lexer.New(input)
+	p := New(l)
+	expr := p.Parse()
+	checkParserErrors(t, p)
+
+	array, ok := expr.(*ast.ArrayLiteral)
+	if !ok {
+		t.Fatalf("exp not ast.ArrayLiteral. got=%T", expr)
+	}
+
+	if len(array.Elements) != 0 {
+		t.Errorf("len(array.Elements) not 0. got=%d", len(array.Elements))
+	}
+}
+
+func TestParsingArrayLiterals(t *testing.T) {
+	input := `["llamas", "alpacas"]`
+
+	l := lexer.New(input)
+	p := New(l)
+	expr := p.Parse()
+	checkParserErrors(t, p)
+
+	array, ok := expr.(*ast.ArrayLiteral)
+	if !ok {
+		t.Fatalf("exp not ast.ArrayLiteral. got=%T", expr)
+	}
+
+	if len(array.Elements) != 2 {
+		t.Fatalf("len(array.Elements) not 2. got=%d", len(array.Elements))
+	}
+
+	testIdentifierOrString(t, array.Elements[0], "llamas")
+	testIdentifierOrString(t, array.Elements[1], "alpacas")
+}
+
+func TestParsingContainsOperator(t *testing.T) {
+	input := `["llamas", "alpacas"] @> "llamas"`
+
+	l := lexer.New(input)
+	p := New(l)
+	expr := p.Parse()
+	checkParserErrors(t, p)
+
+	iexpr, ok := expr.(*ast.InfixExpression)
+	if !ok {
+		t.Fatalf("exp is not ast.InfixExpression. got=%T(%s)", expr, expr)
+	}
+
+	if iexpr.Operator != "@>" {
+		t.Fatalf("exp doesn't have contains operator. got=%s", iexpr.Operator)
+	}
+}
+
 func testInfixExpression(t *testing.T, exp ast.Expression, left interface{},
 	operator string, right interface{}) bool {
 

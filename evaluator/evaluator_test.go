@@ -100,6 +100,20 @@ func TestDotOperator(t *testing.T) {
 	}
 }
 
+func TestContainsOperator(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{`["llamas","alpacas"] @> 'alpacas'`, true},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		testBooleanObject(t, evaluated, tt.expected)
+	}
+}
+
 func testEval(input string) object.Object {
 	return testEvalWithEnv(input, object.NewEnvironment())
 }

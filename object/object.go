@@ -1,8 +1,10 @@
 package object
 
 import (
+	"bytes"
 	"fmt"
 	"regexp"
+	"strings"
 )
 
 type ObjectType string
@@ -18,6 +20,7 @@ const (
 
 	STRUCT_OBJ   = "STRUCT"
 	FUNCTION_OBJ = "FUNCTION"
+	ARRAY_OBJ    = "ARRAY"
 )
 
 type Object interface {
@@ -71,6 +74,26 @@ type Struct struct {
 
 func (s *Struct) Type() ObjectType { return STRUCT_OBJ }
 func (s *Struct) String() string   { return "struct" }
+
+type Array struct {
+	Elements []Object
+}
+
+func (ao *Array) Type() ObjectType { return ARRAY_OBJ }
+func (ao *Array) String() string {
+	var out bytes.Buffer
+
+	elements := []string{}
+	for _, e := range ao.Elements {
+		elements = append(elements, e.String())
+	}
+
+	out.WriteString("[")
+	out.WriteString(strings.Join(elements, ", "))
+	out.WriteString("]")
+
+	return out.String()
+}
 
 type Error struct {
 	Message string
