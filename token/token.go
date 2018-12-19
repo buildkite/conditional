@@ -20,15 +20,18 @@ const (
 	NOT_EQ    = "!="
 	RE_EQ     = "=~"
 	RE_NOT_EQ = "!~"
+	CONTAINS  = "@>"
 
 	// Boolean Operators
 	AND = "&&"
 	OR  = "||"
 
 	// Delimiters
-	COMMA  = ","
-	LPAREN = "("
-	RPAREN = ")"
+	COMMA    = ","
+	LPAREN   = "("
+	RPAREN   = ")"
+	LBRACKET = "["
+	RBRACKET = "]"
 
 	// Keywords
 	TRUE  = "TRUE"

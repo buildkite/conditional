@@ -79,6 +79,18 @@ func TestLexingRegexps(t *testing.T) {
 	})
 }
 
+func TestLexingArrays(t *testing.T) {
+	expectTokens(t, `["llamas", "alpacas"] @> "alpacas"`, []tokenExpectation{
+		{token.LBRACKET, "["},
+		{token.STRING, "llamas"},
+		{token.COMMA, ","},
+		{token.STRING, "alpacas"},
+		{token.RBRACKET, "]"},
+		{token.CONTAINS, "@>"},
+		{token.STRING, "alpacas"},
+	})
+}
+
 func expectTokens(t *testing.T, input string, expect []tokenExpectation) {
 	t.Helper()
 	l := New(input)
