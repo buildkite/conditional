@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/buildkite/condition/token"
+	"github.com/buildkite/conditional/token"
 )
 
 // The base Node interface

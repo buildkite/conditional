@@ -3,7 +3,7 @@ package lexer
 import (
 	"testing"
 
-	"github.com/buildkite/condition/token"
+	"github.com/buildkite/conditional/token"
 )
 
 type tokenExpectation struct {

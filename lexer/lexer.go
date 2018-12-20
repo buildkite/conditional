@@ -1,7 +1,7 @@
 package lexer
 
 import (
-	"github.com/buildkite/condition/token"
+	"github.com/buildkite/conditional/token"
 )
 
 type Lexer struct {

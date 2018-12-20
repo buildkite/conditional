@@ -7,10 +7,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/buildkite/condition/evaluator"
-	"github.com/buildkite/condition/lexer"
-	"github.com/buildkite/condition/object"
-	"github.com/buildkite/condition/parser"
+	"github.com/buildkite/conditional/evaluator"
+	"github.com/buildkite/conditional/lexer"
+	"github.com/buildkite/conditional/object"
+	"github.com/buildkite/conditional/parser"
 )
 
 const PROMPT = ">> "

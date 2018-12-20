@@ -3,8 +3,8 @@ package evaluator
 import (
 	"fmt"
 
-	"github.com/buildkite/condition/ast"
-	"github.com/buildkite/condition/object"
+	"github.com/buildkite/conditional/ast"
+	"github.com/buildkite/conditional/object"
 )
 
 var (

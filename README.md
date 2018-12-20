@@ -1,4 +1,4 @@
-# Buildkite Condition Evaluator
+# Buildkite Conditional Evaluator
 
 A small c-like language for evaluating boolean conditions, used in Buildkite's pipeline.yml format and for filtering whether webhooks are accepted.
 
@@ -15,7 +15,7 @@ A small c-like language for evaluating boolean conditions, used in Buildkite's p
 * Function calls `foo("bar")`
 * Prefixes: `!`
 
-## Syntax:
+## Examples:
 
 ```c
 // individual terms

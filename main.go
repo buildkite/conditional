@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/buildkite/condition/repl"
+	"github.com/buildkite/conditional/repl"
 )
 
 func main() {

@@ -5,9 +5,9 @@ import (
 	"regexp"
 	"strconv"
 
-	"github.com/buildkite/condition/ast"
-	"github.com/buildkite/condition/lexer"
-	"github.com/buildkite/condition/token"
+	"github.com/buildkite/conditional/ast"
+	"github.com/buildkite/conditional/lexer"
+	"github.com/buildkite/conditional/token"
 )
 
 const (

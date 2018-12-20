@@ -3,9 +3,9 @@ package evaluator
 import (
 	"testing"
 
-	"github.com/buildkite/condition/lexer"
-	"github.com/buildkite/condition/object"
-	"github.com/buildkite/condition/parser"
+	"github.com/buildkite/conditional/lexer"
+	"github.com/buildkite/conditional/object"
+	"github.com/buildkite/conditional/parser"
 )
 
 func TestEvalBooleanExpression(t *testing.T) {
