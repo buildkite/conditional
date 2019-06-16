@@ -14,6 +14,8 @@ A small c-like language for evaluating boolean conditions, used in Buildkite's p
 * Regular expressions `/^v1\.0/`
 * Function calls `foo("bar")`
 * Prefixes: `!`
+* Arrays: `["foo","bar"] @> "foo"`
+
 
 ## Examples:
 
@@ -37,4 +39,7 @@ build.tag =~ /^v/
 
 // complex expressions
 ((build.tag =~ ^v) || (meta-data("foo") == "bar"))
+
+// array operations
+["master","staging"] @> build.branch
 ```
