@@ -214,7 +214,7 @@ func evalStringRegexpInfixExpression(operator string, left, right object.Object)
 }
 
 func arrayContains(arr *object.Array, obj object.Object) (bool, error) {
-	// defer untrace(trace("arrayContains", args))
+	// defer untrace(trace("arrayContains", arr, obj))
 
 	for idx, el := range arr.Elements {
 		if el.Type() != obj.Type() {
@@ -255,7 +255,7 @@ func evalDotExpression(s object.Object, prop object.Object) object.Object {
 
 	val, ok := structVal.Props[propVal]
 	if !ok {
-		newError("struct has no property %q", propVal)
+		return newError("struct has no property %q", propVal)
 	}
 
 	return val

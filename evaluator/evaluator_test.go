@@ -100,6 +100,22 @@ func TestDotOperator(t *testing.T) {
 	}
 }
 
+func TestDotOperatorFailsOnMissingStructProperty(t *testing.T) {
+	env := object.NewEnvironment()
+	env.Set(`foo`, &object.Struct{Props: map[string]object.Object{}})
+
+	obj := testEvalWithEnv(`foo.bar`, env)
+
+	result, ok := obj.(*object.Error)
+	if !ok {
+		t.Fatalf("result is not an error. got=%T (%+v)", obj, obj)
+	}
+
+	if result.Message != `struct has no property "bar"` {
+		t.Fatalf("bad error message: %v", result.Message)
+	}
+}
+
 func TestContainsOperator(t *testing.T) {
 	tests := []struct {
 		input    string
