@@ -13,16 +13,13 @@ var (
 	FALSE = &object.Boolean{Value: false}
 )
 
-// Eval an ast.Node (either a literal or an expression), with an environment for context
-func Eval(node ast.Node, env interface{}) object.Object {
-	// defer untrace(trace("Eval", fmt.Sprintf("%T `%s`", node, node.String())))
+type Scope interface {
+	Get(key string) (object.Object, bool)
+}
 
-	var envTyped object.Map
-	if envMap, ok := env.(object.Map); ok {
-		envTyped = envMap
-	} else {
-		envTyped = object.NewReflectMap(env)
-	}
+// Eval an ast.Node (either a literal or an expression), with a scope struct
+func Eval(node ast.Node, scope Scope) object.Object {
+	// defer untrace(trace("Eval", fmt.Sprintf("%T `%s`", node, node.String())))
 
 	switch node := node.(type) {
 
@@ -40,14 +37,14 @@ func Eval(node ast.Node, env interface{}) object.Object {
 		return nativeBoolToBooleanObject(node.Value)
 
 	case *ast.PrefixExpression:
-		right := Eval(node.Right, envTyped)
+		right := Eval(node.Right, scope)
 		if isError(right) {
 			return right
 		}
 		return evalPrefixExpression(node.Operator, right)
 
 	case *ast.InfixExpression:
-		left := Eval(node.Left, envTyped)
+		left := Eval(node.Left, scope)
 		if isError(left) {
 			return left
 		}
@@ -60,7 +57,7 @@ func Eval(node ast.Node, env interface{}) object.Object {
 			}
 			right = &object.String{Value: ident.Value}
 		} else {
-			right = Eval(node.Right, envTyped)
+			right = Eval(node.Right, scope)
 		}
 		if isError(right) {
 			return right
@@ -69,15 +66,15 @@ func Eval(node ast.Node, env interface{}) object.Object {
 		return evalInfixExpression(node.Operator, left, right)
 
 	case *ast.Identifier:
-		return evalIdentifier(node, envTyped)
+		return evalIdentifier(node, scope)
 
 	case *ast.CallExpression:
-		args := evalExpressions(node.Arguments, envTyped)
+		args := evalExpressions(node.Arguments, scope)
 		if len(args) == 1 && isError(args[0]) {
 			return args[0]
 		}
 
-		obj, ok := envTyped.Get(node.Function)
+		obj, ok := scope.Get(node.Function)
 		if !ok {
 			return newError("function not defined: " + node.Function)
 		}
@@ -85,7 +82,7 @@ func Eval(node ast.Node, env interface{}) object.Object {
 		return applyFunction(obj, args)
 
 	case *ast.ArrayLiteral:
-		elements := evalExpressions(node.Elements, envTyped)
+		elements := evalExpressions(node.Elements, scope)
 		if len(elements) == 1 && isError(elements[0]) {
 			return elements[0]
 		}
@@ -107,8 +104,8 @@ func applyFunction(fn object.Object, args []object.Object) object.Object {
 	// defer untrace(trace("applyFunction", args))
 
 	switch fn := fn.(type) {
-	case *object.Function:
-		ret := fn.Fn(args)
+	case object.Function:
+		ret := fn(args)
 		// tracePrint(fmt.Sprintf("RETURN: %+v", ret))
 		return ret
 
@@ -258,14 +255,14 @@ func evalArrayInfixExpression(operator string, left, right object.Object) object
 func evalDotExpression(s object.Object, prop object.Object) object.Object {
 	// defer untrace(trace("evalDotExpression", s, prop))
 
-	mapVal, ok := s.(object.Map)
+	structVal, ok := s.(object.Struct)
 	if !ok {
 		return newError("type can't be used with the dot operator: %T", s)
 	}
 
 	propVal := prop.(*object.String).Value
 
-	val, ok := mapVal.Get(propVal)
+	val, ok := structVal.Get(propVal)
 	if !ok {
 		return newError("struct has no property %q", propVal)
 	}
@@ -274,10 +271,10 @@ func evalDotExpression(s object.Object, prop object.Object) object.Object {
 
 }
 
-func evalIdentifier(node *ast.Identifier, env object.Map) object.Object {
+func evalIdentifier(node *ast.Identifier, scope Scope) object.Object {
 	// defer untrace(trace("evalIdentifier"))
 
-	val, ok := env.Get(node.Value)
+	val, ok := scope.Get(node.Value)
 	if !ok {
 		return newError("identifier not found: " + node.Value)
 	}
@@ -296,13 +293,13 @@ func isError(obj object.Object) bool {
 	return false
 }
 
-func evalExpressions(exps []ast.Expression, env object.Map) []object.Object {
+func evalExpressions(exps []ast.Expression, scope Scope) []object.Object {
 	// defer untrace(trace("evalExpressions", exps))
 
 	var result []object.Object
 
 	for _, e := range exps {
-		evaluated := Eval(e, env)
+		evaluated := Eval(e, scope)
 		if isError(evaluated) {
 			return []object.Object{evaluated}
 		}

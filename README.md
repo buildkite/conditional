@@ -63,9 +63,9 @@ func main() {
 	  log.Fatal(errs...)
   }
 
-  obj := evaluator.Eval(expr, map[string]interface{}{
-    "build": map[string]interface{}{
-      "message": "llamas rock, and so do alpacas",
+  obj := evaluator.Eval(expr, object.Struct{
+    "build": object.Struct{
+      "message": &object.String{"llamas rock, and so do alpacas"},
     },
   })
 

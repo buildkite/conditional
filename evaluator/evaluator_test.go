@@ -66,17 +66,17 @@ func TestCallOperator(t *testing.T) {
 		{"env(foo('a', 'b')) == 'test'", true},
 	}
 
-	env := &object.Struct{
-		`env`: &object.Function{Fn: func(args []object.Object) object.Object {
+	env := object.Struct{
+		`env`: object.Function(func(args []object.Object) object.Object {
 			return args[0]
-		}},
-		`foo`: &object.Function{Fn: func(args []object.Object) object.Object {
+		}),
+		`foo`: object.Function(func(args []object.Object) object.Object {
 			return &object.String{Value: "test"}
-		}},
+		}),
 	}
 
 	for _, tt := range tests {
-		evaluated := testEvalWithEnv(tt.input, env)
+		evaluated := testEvalWithScope(tt.input, env)
 		testBooleanObject(t, evaluated, tt.expected)
 	}
 }
@@ -89,81 +89,23 @@ func TestDotOperator(t *testing.T) {
 		{"foo.bar.baz == 'test'", true},
 	}
 
-	env := &object.Struct{
-		`foo`: &object.Struct{
-			`bar`: &object.Struct{
+	scope := object.Struct{
+		`foo`: object.Struct{
+			`bar`: object.Struct{
 				`baz`: &object.String{Value: "test"},
 			},
 		},
 	}
 
 	for _, tt := range tests {
-		evaluated := testEvalWithEnv(tt.input, env)
-		testBooleanObject(t, evaluated, tt.expected)
-	}
-}
-
-func TestDotOperatorWithReflectFromInterfaceMap(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected bool
-	}{
-		{"foo.bar.baz == 'test'", true},
-		{"foo.bar.another", true},
-		{"foo.bar.andanint == 24", true},
-	}
-
-	env := object.NewReflectMap(map[string]interface{}{
-		`foo`: map[string]interface{}{
-			`bar`: map[string]interface{}{
-				`baz`:      "test",
-				`another`:  true,
-				`andanint`: 24,
-			},
-		},
-	})
-
-	for _, tt := range tests {
-		evaluated := testEvalWithEnv(tt.input, env)
-		testBooleanObject(t, evaluated, tt.expected)
-	}
-}
-
-func TestDotOperatorWithReflectFromStruct(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected bool
-	}{
-		{"foo.bar.baz == 'test'", true},
-		{"foo.bar.another", true},
-		{"foo.bar.andanint == 24", true},
-	}
-
-	var obj struct {
-		Foo struct {
-			Bar struct {
-				Baz      string
-				Another  bool
-				AndAnInt int
-			}
-		}
-	}
-
-	obj.Foo.Bar.Baz = "test"
-	obj.Foo.Bar.Another = true
-	obj.Foo.Bar.AndAnInt = 24
-
-	env := object.NewReflectMap(obj)
-
-	for _, tt := range tests {
-		evaluated := testEvalWithEnv(tt.input, env)
+		evaluated := testEvalWithScope(tt.input, scope)
 		testBooleanObject(t, evaluated, tt.expected)
 	}
 }
 
 func TestDotOperatorFailsOnMissingStructProperty(t *testing.T) {
-	obj := testEvalWithEnv(`foo.bar`, &object.Struct{
-		`foo`: &object.Struct{},
+	obj := testEvalWithScope(`foo.bar`, object.Struct{
+		`foo`: object.Struct{},
 	})
 
 	result, ok := obj.(*object.Error)
@@ -193,29 +135,14 @@ func TestContainsOperator(t *testing.T) {
 }
 
 func testEval(input string) object.Object {
-	return testEvalWithEnv(input, &object.Struct{})
+	return testEvalWithScope(input, object.Struct{})
 }
 
-func testEvalWithEnv(input string, env object.Map) object.Object {
+func testEvalWithScope(input string, scope Scope) object.Object {
 	l := lexer.New(input)
 	p := parser.New(l)
 	expr := p.Parse()
-	return Eval(expr, env)
-}
-
-func testIntegerObject(t *testing.T, obj object.Object, expected int64) bool {
-	result, ok := obj.(*object.Integer)
-	if !ok {
-		t.Errorf("object is not Integer. got=%T (%+v)", obj, obj)
-		return false
-	}
-	if result.Value != expected {
-		t.Errorf("object has wrong value. got=%d, want=%d",
-			result.Value, expected)
-		return false
-	}
-
-	return true
+	return Eval(expr, scope)
 }
 
 func testBooleanObject(t *testing.T, obj object.Object, expected bool) bool {
@@ -227,14 +154,6 @@ func testBooleanObject(t *testing.T, obj object.Object, expected bool) bool {
 	if result.Value != expected {
 		t.Errorf("object has wrong value. got=%t, want=%t",
 			result.Value, expected)
-		return false
-	}
-	return true
-}
-
-func testNullObject(t *testing.T, obj object.Object) bool {
-	if obj != NULL {
-		t.Errorf("object is not NULL. got=%T (%+v)", obj, obj)
 		return false
 	}
 	return true
