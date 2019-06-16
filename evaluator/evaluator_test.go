@@ -66,13 +66,14 @@ func TestCallOperator(t *testing.T) {
 		{"env(foo('a', 'b')) == 'test'", true},
 	}
 
-	env := object.NewEnvironment()
-	env.Set(`env`, &object.Function{Fn: func(args []object.Object) object.Object {
-		return args[0]
-	}})
-	env.Set(`foo`, &object.Function{Fn: func(args []object.Object) object.Object {
-		return &object.String{Value: "test"}
-	}})
+	env := &object.Struct{
+		`env`: &object.Function{Fn: func(args []object.Object) object.Object {
+			return args[0]
+		}},
+		`foo`: &object.Function{Fn: func(args []object.Object) object.Object {
+			return &object.String{Value: "test"}
+		}},
+	}
 
 	for _, tt := range tests {
 		evaluated := testEvalWithEnv(tt.input, env)
@@ -88,12 +89,72 @@ func TestDotOperator(t *testing.T) {
 		{"foo.bar.baz == 'test'", true},
 	}
 
-	env := object.NewEnvironment()
-	env.Set(`foo`, &object.Struct{Props: map[string]object.Object{
-		`bar`: &object.Struct{Props: map[string]object.Object{
-			`baz`: &object.String{Value: "test"},
-		}},
-	}})
+	env := &object.Struct{
+		`foo`: &object.Struct{
+			`bar`: &object.Struct{
+				`baz`: &object.String{Value: "test"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEvalWithEnv(tt.input, env)
+		testBooleanObject(t, evaluated, tt.expected)
+	}
+}
+
+func TestDotOperatorWithReflectFromInterfaceMap(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{"foo.bar.baz == 'test'", true},
+		{"foo.bar.another", true},
+		{"foo.bar.andanint == 24", true},
+	}
+
+	env := object.NewReflectMap(map[string]interface{}{
+		`foo`: map[string]interface{}{
+			`bar`: map[string]interface{}{
+				`baz`:      "test",
+				`another`:  true,
+				`andanint`: 24,
+			},
+		},
+	})
+
+	for _, tt := range tests {
+		evaluated := testEvalWithEnv(tt.input, env)
+		testBooleanObject(t, evaluated, tt.expected)
+	}
+}
+
+func TestDotOperatorWithReflectFromStruct(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{"foo.bar.baz == 'test'", true},
+		{"foo.bar.another", true},
+		{"foo.bar.andanint == 24", true},
+	}
+
+	var obj struct {
+		Foo struct {
+			Bar struct {
+				Baz      string
+				Another  bool
+				AndAnInt int
+			}
+		}
+	}
+
+	obj.Foo.Bar.Baz = "test"
+	obj.Foo.Bar.Another = true
+	obj.Foo.Bar.AndAnInt = 24
+
+	env := object.NewReflectMap(obj)
+
 	for _, tt := range tests {
 		evaluated := testEvalWithEnv(tt.input, env)
 		testBooleanObject(t, evaluated, tt.expected)
@@ -101,10 +162,9 @@ func TestDotOperator(t *testing.T) {
 }
 
 func TestDotOperatorFailsOnMissingStructProperty(t *testing.T) {
-	env := object.NewEnvironment()
-	env.Set(`foo`, &object.Struct{Props: map[string]object.Object{}})
-
-	obj := testEvalWithEnv(`foo.bar`, env)
+	obj := testEvalWithEnv(`foo.bar`, &object.Struct{
+		`foo`: &object.Struct{},
+	})
 
 	result, ok := obj.(*object.Error)
 	if !ok {
@@ -133,10 +193,10 @@ func TestContainsOperator(t *testing.T) {
 }
 
 func testEval(input string) object.Object {
-	return testEvalWithEnv(input, object.NewEnvironment())
+	return testEvalWithEnv(input, &object.Struct{})
 }
 
-func testEvalWithEnv(input string, env *object.Environment) object.Object {
+func testEvalWithEnv(input string, env object.Map) object.Object {
 	l := lexer.New(input)
 	p := parser.New(l)
 	expr := p.Parse()

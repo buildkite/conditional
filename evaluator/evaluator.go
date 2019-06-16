@@ -13,8 +13,16 @@ var (
 	FALSE = &object.Boolean{Value: false}
 )
 
-func Eval(node ast.Node, env *object.Environment) object.Object {
+// Eval an ast.Node (either a literal or an expression), with an environment for context
+func Eval(node ast.Node, env interface{}) object.Object {
 	// defer untrace(trace("Eval", fmt.Sprintf("%T `%s`", node, node.String())))
+
+	var envTyped object.Map
+	if envMap, ok := env.(object.Map); ok {
+		envTyped = envMap
+	} else {
+		envTyped = object.NewReflectMap(env)
+	}
 
 	switch node := node.(type) {
 
@@ -32,14 +40,14 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 		return nativeBoolToBooleanObject(node.Value)
 
 	case *ast.PrefixExpression:
-		right := Eval(node.Right, env)
+		right := Eval(node.Right, envTyped)
 		if isError(right) {
 			return right
 		}
 		return evalPrefixExpression(node.Operator, right)
 
 	case *ast.InfixExpression:
-		left := Eval(node.Left, env)
+		left := Eval(node.Left, envTyped)
 		if isError(left) {
 			return left
 		}
@@ -52,7 +60,7 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 			}
 			right = &object.String{Value: ident.Value}
 		} else {
-			right = Eval(node.Right, env)
+			right = Eval(node.Right, envTyped)
 		}
 		if isError(right) {
 			return right
@@ -61,15 +69,15 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 		return evalInfixExpression(node.Operator, left, right)
 
 	case *ast.Identifier:
-		return evalIdentifier(node, env)
+		return evalIdentifier(node, envTyped)
 
 	case *ast.CallExpression:
-		args := evalExpressions(node.Arguments, env)
+		args := evalExpressions(node.Arguments, envTyped)
 		if len(args) == 1 && isError(args[0]) {
 			return args[0]
 		}
 
-		obj, ok := env.Get(node.Function)
+		obj, ok := envTyped.Get(node.Function)
 		if !ok {
 			return newError("function not defined: " + node.Function)
 		}
@@ -77,7 +85,7 @@ func Eval(node ast.Node, env *object.Environment) object.Object {
 		return applyFunction(obj, args)
 
 	case *ast.ArrayLiteral:
-		elements := evalExpressions(node.Elements, env)
+		elements := evalExpressions(node.Elements, envTyped)
 		if len(elements) == 1 && isError(elements[0]) {
 			return elements[0]
 		}
@@ -250,10 +258,14 @@ func evalArrayInfixExpression(operator string, left, right object.Object) object
 func evalDotExpression(s object.Object, prop object.Object) object.Object {
 	// defer untrace(trace("evalDotExpression", s, prop))
 
-	structVal := s.(*object.Struct)
+	mapVal, ok := s.(object.Map)
+	if !ok {
+		return newError("type can't be used with the dot operator: %T", s)
+	}
+
 	propVal := prop.(*object.String).Value
 
-	val, ok := structVal.Props[propVal]
+	val, ok := mapVal.Get(propVal)
 	if !ok {
 		return newError("struct has no property %q", propVal)
 	}
@@ -262,7 +274,7 @@ func evalDotExpression(s object.Object, prop object.Object) object.Object {
 
 }
 
-func evalIdentifier(node *ast.Identifier, env *object.Environment) object.Object {
+func evalIdentifier(node *ast.Identifier, env object.Map) object.Object {
 	// defer untrace(trace("evalIdentifier"))
 
 	val, ok := env.Get(node.Value)
@@ -284,7 +296,7 @@ func isError(obj object.Object) bool {
 	return false
 }
 
-func evalExpressions(exps []ast.Expression, env *object.Environment) []object.Object {
+func evalExpressions(exps []ast.Expression, env object.Map) []object.Object {
 	// defer untrace(trace("evalExpressions", exps))
 
 	var result []object.Object

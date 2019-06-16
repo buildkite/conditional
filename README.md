@@ -16,8 +16,7 @@ A small c-like language for evaluating boolean conditions, used in Buildkite's p
 * Prefixes: `!`
 * Arrays: `["foo","bar"] @> "foo"`
 
-
-## Examples:
+### Syntax Examples
 
 ```c
 // individual terms
@@ -43,3 +42,41 @@ build.tag =~ /^v/
 // array operations
 ["master","staging"] @> build.branch
 ```
+
+## Usage
+
+```go
+package main
+
+import (
+  "github.com/buildkite/conditional/lexer"
+  "github.com/buildkite/conditional/parser"
+  "github.com/buildkite/conditional/evaluator"
+)
+
+func main() {
+	l := lexer.New(`build.message =~ /^llamas rock/`)
+	p := parser.New(l)
+	expr := p.Parse()
+
+	if errs := p.Errors(); len(errs) > 0 {
+	  log.Fatal(errs...)
+  }
+
+  obj := evaluator.Eval(expr, map[string]interface{}{
+    "build": map[string]interface{}{
+      "message": "llamas rock, and so do alpacas",
+    },
+  })
+
+  log.Printf("Result: %#v", obj)
+}
+```
+
+## Design
+
+Largely derived from [Writing an Interpreter in Go](https://interpreterbook.com):
+
+* `lexer.Lexer` takes a string of input and turns it into a stream of `token.Token`
+* `parser.Parser` takes a Lexer and parses tokens into an `ast.Expression`
+* `evaluator.Evaluator` which takes a `ast.Expression` and evaluates it, with a `object.Map` for variables in scope. An `*object.Object` is returned.

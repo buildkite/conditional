@@ -79,12 +79,32 @@ func (f *Function) Type() ObjectType     { return FUNCTION_OBJ }
 func (f *Function) String() string       { return "function" }
 func (f *Function) Equals(o Object) bool { return f == o }
 
-type Struct struct {
-	Props map[string]Object
+type Map interface {
+	Object
+	Get(key string) (Object, bool)
+	Set(key string, obj Object)
+	Has(key string) bool
 }
+
+type Struct map[string]Object
 
 func (s *Struct) Type() ObjectType { return STRUCT_OBJ }
 func (s *Struct) String() string   { return "struct" }
+
+func (s *Struct) Get(key string) (Object, bool) {
+	obj, ok := (*s)[key]
+	return obj, ok
+}
+
+func (s *Struct) Set(key string, obj Object) {
+	(*s)[key] = obj
+}
+
+func (s *Struct) Has(key string) bool {
+	_, ok := (*s)[key]
+	return ok
+}
+
 func (s *Struct) Equals(o Object) bool {
 	return reflect.DeepEqual(s, o)
 }
