@@ -13,7 +13,7 @@ func BenchmarkSingleTokenEvaluation(bench *testing.B) {
 	l := lexer.New(`true`)
 	p := parser.New(l)
 	expr := p.Parse()
-	env := object.NewEnvironment()
+	env := &object.Struct{}
 	bench.ResetTimer()
 
 	for i := 0; i < bench.N; i++ {
@@ -25,13 +25,12 @@ func BenchmarkSimpleEvaluation(bench *testing.B) {
 	l := lexer.New(`build.branch == master" && build.pull_request == true`)
 	p := parser.New(l)
 	expr := p.Parse()
-	env := object.NewEnvironment()
-	env.Set(`build`, &object.Struct{
-		Props: map[string]object.Object{
+	env := &object.Struct{
+		`build`: &object.Struct{
 			`branch`:       &object.String{Value: "master"},
 			`pull_request`: &object.Boolean{Value: true},
 		},
-	})
+	}
 	bench.ResetTimer()
 
 	for i := 0; i < bench.N; i++ {
