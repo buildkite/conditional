@@ -49,9 +49,12 @@ build.tag =~ /^v/
 package main
 
 import (
-  "github.com/buildkite/conditional/lexer"
-  "github.com/buildkite/conditional/parser"
-  "github.com/buildkite/conditional/evaluator"
+	"log"
+
+	"github.com/buildkite/conditional/evaluator"
+	"github.com/buildkite/conditional/lexer"
+	"github.com/buildkite/conditional/object"
+	"github.com/buildkite/conditional/parser"
 )
 
 func main() {
@@ -60,16 +63,16 @@ func main() {
 	expr := p.Parse()
 
 	if errs := p.Errors(); len(errs) > 0 {
-	  log.Fatal(errs...)
-  }
+		log.Fatal(errs...)
+	}
 
-  obj := evaluator.Eval(expr, object.Struct{
-    "build": object.Struct{
-      "message": &object.String{"llamas rock, and so do alpacas"},
-    },
-  })
+	obj := evaluator.Eval(expr, object.Struct{
+		"build": object.Struct{
+			"message": &object.String{"llamas rock, and so do alpacas"},
+		},
+	})
 
-  log.Printf("Result: %#v", obj)
+	log.Printf("Result: %#v", obj)
 }
 ```
 
