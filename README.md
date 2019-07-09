@@ -63,7 +63,7 @@ func main() {
 	expr := p.Parse()
 
 	if errs := p.Errors(); len(errs) > 0 {
-		log.Fatal(errs...)
+		log.Fatal(errs)
 	}
 
 	obj := evaluator.Eval(expr, object.Struct{
