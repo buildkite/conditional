@@ -45,6 +45,11 @@ build.message !~ /\[skip tests\]/i
 ["master","staging"] includes build.branch
 ```
 
+The evaluator expects conditionals after Buildkite interpolation has already
+run. In pipeline YAML, escape `$` anchors to avoid interpolation; by the time the
+conditional is parsed, an end anchor should be a raw `$`. Regex escapes such as
+`\$` are preserved as literal-dollar matches.
+
 ## Usage
 
 ```go
