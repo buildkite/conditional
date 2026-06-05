@@ -4,8 +4,9 @@ import (
 	"bytes"
 	"fmt"
 	"reflect"
-	"regexp"
 	"strings"
+
+	"github.com/dlclark/regexp2"
 )
 
 type ObjectType string
@@ -58,7 +59,8 @@ func (s *String) String() string       { return fmt.Sprintf("%q", s.Value) }
 func (s *String) Equals(o Object) bool { return s.String() == o.String() }
 
 type Regexp struct {
-	*regexp.Regexp
+	*regexp2.Regexp
+	Flags string
 }
 
 func (r *Regexp) Type() ObjectType     { return REGEXP_OBJ }

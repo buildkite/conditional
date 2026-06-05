@@ -93,7 +93,7 @@ func (l *Lexer) NextToken() token.Token {
 		tok.Literal = l.readString('\'')
 	case '/':
 		tok.Type = token.REGEXP
-		tok.Literal = l.readRegex()
+		tok.Literal, tok.Flags = l.readRegex()
 	case '(':
 		tok = newToken(token.LPAREN, l.ch)
 	case ')':
@@ -191,15 +191,32 @@ func (l *Lexer) readString(quote byte) string {
 	return l.input[position:l.position]
 }
 
-func (l *Lexer) readRegex() string {
+func (l *Lexer) readRegex() (string, string) {
 	position := l.position + 1
+	escaped := false
 	for {
 		l.readChar()
-		if l.ch == '/' || l.ch == 0 {
+		if l.ch == 0 {
 			break
 		}
+		if l.ch == '/' && !escaped {
+			break
+		}
+
+		if l.ch == '\\' && !escaped {
+			escaped = true
+		} else {
+			escaped = false
+		}
 	}
-	return l.input[position:l.position]
+
+	literal := l.input[position:l.position]
+	flagsPosition := l.readPosition
+	for l.readPosition < len(l.input) && isLetter(l.input[l.readPosition]) {
+		l.readChar()
+	}
+
+	return literal, l.input[flagsPosition:l.readPosition]
 }
 
 func isLetter(ch byte) bool {

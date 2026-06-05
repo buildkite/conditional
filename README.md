@@ -36,6 +36,7 @@ env(env('BAR')) == "FOO"
 
 // regular expression matches
 build.tag =~ /^v/
+build.message !~ /\[skip tests\]/i
 
 // complex expressions
 ((build.tag =~ ^v) || (meta-data("foo") == "bar"))

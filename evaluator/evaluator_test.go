@@ -32,6 +32,11 @@ func TestEvalBooleanExpression(t *testing.T) {
 		{"null != null", false},
 		{"'a' =~ /a/", true},
 		{"'b' !~ /a/", true},
+		{`"features/foo" =~ /^features\//`, true},
+		{`"feature/release-123" =~ /\/release-123\$/`, true},
+		{`"v1.0" =~ /^v[0-9]+\.0\$/`, true},
+		{`"[SKIP TESTS]" =~ /\[skip tests\]/i`, true},
+		{`"[SKIP TESTS]" !~ /\[skip tests\]/i`, false},
 	}
 
 	for _, tt := range tests {

@@ -31,7 +31,7 @@ func Eval(node ast.Node, scope Scope) object.Object {
 		return &object.String{Value: node.Value}
 
 	case *ast.Regexp:
-		return &object.Regexp{Regexp: node.Regexp}
+		return &object.Regexp{Regexp: node.Regexp, Flags: node.Flags}
 
 	case *ast.Boolean:
 		return nativeBoolToBooleanObject(node.Value)
@@ -243,12 +243,16 @@ func evalStringRegexpInfixExpression(operator string, left, right object.Object)
 
 	leftVal := left.(*object.String).Value
 	rightVal := right.(*object.Regexp).Regexp
+	matched, err := rightVal.MatchString(leftVal)
+	if err != nil {
+		return newError("regexp match failed: %s", err)
+	}
 
 	switch operator {
 	case "=~":
-		return nativeBoolToBooleanObject(rightVal.MatchString(leftVal))
+		return nativeBoolToBooleanObject(matched)
 	case "!~":
-		return nativeBoolToBooleanObject(!rightVal.MatchString(leftVal))
+		return nativeBoolToBooleanObject(!matched)
 	default:
 		return newError("unknown operator: %s %s %s",
 			left.Type(), operator, right.Type())

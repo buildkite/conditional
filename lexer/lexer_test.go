@@ -80,6 +80,41 @@ func TestLexingRegexps(t *testing.T) {
 		{token.RE_EQ, "=~"},
 		{token.REGEXP, "^v"},
 	})
+	expectTokens(t, `build.branch =~ /^features\//`, []tokenExpectation{
+		{token.IDENT, "build"},
+		{token.DOT, "."},
+		{token.IDENT, "branch"},
+		{token.RE_EQ, "=~"},
+		{token.REGEXP, `^features\/`},
+	})
+	expectTokens(t, `build.branch =~ /\/release-123\$/`, []tokenExpectation{
+		{token.IDENT, "build"},
+		{token.DOT, "."},
+		{token.IDENT, "branch"},
+		{token.RE_EQ, "=~"},
+		{token.REGEXP, `\/release-123\$`},
+	})
+	expectTokens(t, `build.message !~ /\[skip tests\]/i`, []tokenExpectation{
+		{token.IDENT, "build"},
+		{token.DOT, "."},
+		{token.IDENT, "message"},
+		{token.RE_NOT_EQ, "!~"},
+		{token.REGEXP, `\[skip tests\]`},
+	})
+
+	l := New(`build.message !~ /\[skip tests\]/i`)
+	for {
+		tok := l.NextToken()
+		if tok.Type == token.REGEXP {
+			if tok.Flags != "i" {
+				t.Fatalf("regexp flags wrong. expected=%q, got=%q", "i", tok.Flags)
+			}
+			return
+		}
+		if tok.Type == token.EOF {
+			t.Fatal("regexp token not found")
+		}
+	}
 }
 
 func TestLexingArrays(t *testing.T) {
