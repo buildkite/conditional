@@ -3,7 +3,6 @@ package parser
 import (
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/buildkite/conditional/ast"
@@ -225,7 +224,7 @@ func (p *Parser) parseRegexp() ast.Expression {
 		return nil
 	}
 
-	r, err := regexp2.Compile(regexpPattern(p.curToken.Literal), options)
+	r, err := regexp2.Compile(p.curToken.Literal, options)
 	if err != nil {
 		msg := fmt.Sprintf("could not parse regexp: %v", err)
 		p.errors = append(p.errors, msg)
@@ -237,57 +236,6 @@ func (p *Parser) parseRegexp() ast.Expression {
 
 	ar.Regexp = r
 	return ar
-}
-
-func regexpPattern(literal string) string {
-	// Buildkite docs require escaping $ anchors before conditional evaluation
-	// to avoid environment substitution. Keep literal dollar escapes intact.
-	var out strings.Builder
-	out.Grow(len(literal))
-
-	for i := 0; i < len(literal); i++ {
-		if literal[i] == '\\' && i+1 < len(literal) && literal[i+1] == '$' && escapedDollarLooksLikeAnchor(literal, i) {
-			out.WriteByte('$')
-			i++
-			continue
-		}
-
-		out.WriteByte(literal[i])
-	}
-
-	return out.String()
-}
-
-func escapedDollarLooksLikeAnchor(literal string, backslashIndex int) bool {
-	if backslashIndex == 0 {
-		return false
-	}
-
-	previous := literal[backslashIndex-1]
-	if previous == '\\' || isASCIISpace(previous) {
-		return false
-	}
-
-	nextIndex := backslashIndex + 2
-	if nextIndex == len(literal) {
-		return true
-	}
-
-	switch literal[nextIndex] {
-	case '|', ')':
-		return true
-	default:
-		return false
-	}
-}
-
-func isASCIISpace(ch byte) bool {
-	switch ch {
-	case ' ', '\t', '\n', '\r', '\f', '\v':
-		return true
-	default:
-		return false
-	}
 }
 
 func regexpOptions(flags string) (regexp2.RegexOptions, error) {

@@ -101,26 +101,6 @@ func TestRegexpUnsupportedFlags(t *testing.T) {
 	}
 }
 
-func TestRegexpPatternEscapedDollar(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected string
-	}{
-		{`release-123\$`, `release-123$`},
-		{`^v[0-9]+\.0\$`, `^v[0-9]+\.0$`},
-		{`^(main\$|release\/.*\$)`, `^(main$|release\/.*$)`},
-		{`\$`, `\$`},
-		{`price \$`, `price \$`},
-		{`price \$[0-9]+`, `price \$[0-9]+`},
-	}
-
-	for _, tt := range tests {
-		if got := regexpPattern(tt.input); got != tt.expected {
-			t.Errorf("regexpPattern(%q) = %q, want %q", tt.input, got, tt.expected)
-		}
-	}
-}
-
 func TestParsingPrefixExpressions(t *testing.T) {
 	prefixTests := []struct {
 		input    string

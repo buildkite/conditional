@@ -117,6 +117,16 @@ func TestLexingRegexps(t *testing.T) {
 	}
 }
 
+func TestLexingUnterminatedRegexp(t *testing.T) {
+	expectTokens(t, `build.branch =~ /release`, []tokenExpectation{
+		{token.IDENT, "build"},
+		{token.DOT, "."},
+		{token.IDENT, "branch"},
+		{token.RE_EQ, "=~"},
+		{token.ILLEGAL, "release"},
+	})
+}
+
 func TestLexingArrays(t *testing.T) {
 	expectTokens(t, `build.creator.teams includes "deploy"`, []tokenExpectation{
 		{token.IDENT, "build"},
