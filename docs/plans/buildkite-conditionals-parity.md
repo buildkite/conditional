@@ -127,7 +127,7 @@ library surface. The root package should expose the Buildkite contract in terms
 callers care about: validate this conditional, evaluate it in this Buildkite
 context, and receive a boolean or a typed error.
 
-Recommended public shape:
+Public shape:
 
 ```go
 type ContextKind string
@@ -178,9 +178,8 @@ Codebase cleanup should push toward idiomatic Go package boundaries:
   consumer needs substitution, such as an optional server-oracle checker.
 - Keep parser, evaluator, regex validation, context construction, and
   environment substitution as separate reasons to change.
-- Move implementation-only packages under `internal/` if this repo can make a
-  breaking API cleanup; otherwise keep them documented as unstable internals and
-  make the root package the only supported library API.
+- Move implementation-only packages under `internal/` as part of the breaking
+  cleanup. The root package is the supported library API.
 - Remove or isolate any generic-language behavior that conflicts with the
   server grammar.
 
@@ -458,8 +457,8 @@ Definition of done:
   errors or error categories.
 - Non-boolean final objects are errors.
 - Table-driven conformance tests use the root API for parity assertions.
-- Implementation packages are either moved under `internal/` or documented as
-  unstable implementation details pending a final breaking cleanup.
+- Implementation packages are moved under `internal/` so the root package is the
+  only supported library API.
 
 ### Slice 3: Parser Grammar Parity
 
@@ -650,38 +649,22 @@ Add these targeted checks as the plan lands:
 - Port upstream Buildkite specs into plain table-driven Go tests before
   inventing bespoke parity cases. Do not use YAML test data for the conformance
   corpus.
-- The root package should be the supported Go library API. Existing subpackages
-  can remain during implementation, but they are not the final parity contract.
+- The root package is the supported Go library API. Existing subpackages can
+  remain during transition, but they are not the final parity contract.
+- Breaking API and package cleanup is allowed to reach the polished library
+  shape, including moving implementation packages under `internal/`.
+- Root-package `Validate(expression, ctx)` and `Evaluate(expression, ctx)` are
+  the public API names.
+- Error parity means exact accept/reject behavior, stable Go error categories,
+  and source location where meaningful. Byte-for-byte Ruby error text is not a
+  requirement for the first parity release.
+- The library should derive pure conditional values, such as `source_event` from
+  supplied environment data, but callers must provide database-backed facts such
+  as visible teams and preferred emails.
+- Implementation packages should move under `internal/` once the root API is in
+  place.
 
-## Open Questions
-
-### Blocking First Implementation Slice
-
-- Public API names: the plan recommends root-package `Validate` and `Evaluate`.
-  That is idiomatic and terse, but this is the point to change it if we want
-  `Check`, `Compile`, or an explicit `Expression` type.
-
-### Needed Before Server-Parity Claim
-
-- Which server surface can act as the oracle for expression evaluation? The
-  default should be committed Go tests plus an optional check tool; a live server
-  dependency should not be required in normal CI.
-- Error message parity: should the Go library match server error text
-  byte-for-byte, or is parity on accept/reject behavior, error category, and
-  source location enough? The recommended default is category and location
-  parity, because that gives callers stable Go errors without cloning every Ruby
-  string.
-- Context data model depth: how much server-derived behavior should the caller
-  provide as values versus the library deriving it? The recommended default is
-  to derive pure conditional values, such as `source_event` from env, but require
-  callers to provide database-backed facts such as visible teams and preferred
-  emails.
-- Breaking package cleanup: should implementation packages move under
-  `internal/` once the root API exists? The recommended default is yes if this
-  repo can make a breaking cleanup; otherwise mark subpackages as unstable and
-  avoid promising them as public API.
-
-### Safe To Defer
+## Deferred Work
 
 - Optional live server oracle. Ported upstream specs should carry the first
   several implementation slices.
