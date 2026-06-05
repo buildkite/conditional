@@ -1,0 +1,31 @@
+[env]
+MISE_GITHUB_TOKEN = "{% if env.MISE_GITHUB_TOKEN is defined %}{{ env.MISE_GITHUB_TOKEN }}{% else %}{{ exec(command='gh auth token 2>/dev/null || true') }}{% endif %}"
+
+[tools]
+go = "1.25.6"
+
+[tasks.build]
+description = "Build the binary"
+run = "go build -o conditional ./cmd/conditional"
+
+[tasks.install]
+description = "Install the binary to ~/bin/conditional"
+run = [
+  "mkdir -p \"$HOME/bin\"",
+  "go build -o \"$HOME/bin/conditional\" ./cmd/conditional",
+]
+
+[tasks.test]
+description = "Run all tests"
+run = "go test ./..."
+
+[tasks.lint]
+description = "Run linter"
+run = [
+  "go vet ./...",
+  "go run honnef.co/go/tools/cmd/staticcheck@latest ./...",
+]
+
+[tasks.check]
+description = "Run build, test, and lint"
+depends = ["build", "test", "lint"]

@@ -64,7 +64,7 @@ func Unmarshal(data interface{}, v Object) error {
 	}
 
 	if !handled {
-		return fmt.Errorf("Unable to unmarshal %T into %T", data, v)
+		return fmt.Errorf("unable to unmarshal %T into %T", data, v)
 	}
 
 	// log.Printf("Returning: %#v", v)
@@ -98,7 +98,7 @@ func unmarshalInterfaceMap(data map[string]interface{}, into Struct) error {
 				}
 				into[k] = val
 			} else {
-				return fmt.Errorf("Unable to unmarshal field %s of type %T", k, vi)
+				return fmt.Errorf("unable to unmarshal field %s of type %T", k, vi)
 			}
 		}
 	}
@@ -150,7 +150,7 @@ func unmarshalStruct(data interface{}, into Struct) error {
 				}
 				into[tag] = val
 			} else {
-				return fmt.Errorf("Unable to unmarshal field %s of type %T (%v)", field.Name, dt, reflect.TypeOf(dt).Kind())
+				return fmt.Errorf("unable to unmarshal field %s of type %T (%v)", field.Name, dt, reflect.TypeOf(dt).Kind())
 			}
 		}
 	}
