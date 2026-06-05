@@ -392,8 +392,8 @@ from this plan.
 
 | Area | Current Behavior | Required Direction |
 | --- | --- | --- |
-| Dotted names | Local parsing/evaluation leans on nested object lookup. It cannot exactly model server identifiers that are both scalar and namespace-like, such as `build.pull_request.repository` and `build.pull_request.repository.fork`. | Match the server grammar's flat dotted identifiers for variables and functions. |
-| `build.env()` | Only top-level calls evaluate cleanly. `build.env("NAME")` currently fails during evaluation. | Treat `build.env` as a flat function identifier with server-compatible nullable return behavior. |
+| Dotted names | The root adapter supplies flat assignment keys for server variables, but parser/evaluator internals still keep the older nested-object fallback. | Match the server grammar's flat dotted identifiers throughout parser, type checker, and evaluator internals. |
+| `build.env()` | The root adapter supports `build.env("NAME")` as a flat function identifier, but full validator coverage still belongs in the conformance slices. | Treat `build.env` as a flat function identifier with server-compatible nullable return behavior across validation and conformance tests. |
 | Ternary syntax | Not implemented. | Implement server ternary `condition ? true_value : false_value` precedence and type checking. |
 | Shell substitution | Not implemented. | Implement server grammar for `$name`, `${name}`, default/alternate/error forms, and substring forms. |
 | Scope | Callers pass arbitrary `object.Struct`. | Add server-style Buildkite assignment tables with documented variables and context availability. |

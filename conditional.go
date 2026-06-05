@@ -123,19 +123,14 @@ func buildScope(ctx Context) object.Struct {
 	env := mergedEnv(ctx)
 
 	scope := object.Struct{
-		"env": object.Function(func(args []object.Object) object.Object {
-			if len(args) != 1 {
-				return &object.Error{Message: fmt.Sprintf("wrong number of arguments for env: got %d, want 1", len(args))}
-			}
-			name, ok := args[0].(*object.String)
-			if !ok {
-				return &object.Error{Message: "env argument must be a string"}
-			}
-			return &object.String{Value: env[name.Value]}
-		}),
+		"env":          envFunction(env),
+		"build.env":    nullableEnvFunction(env),
 		"build":        buildObject(ctx),
 		"pipeline":     pipelineObject(ctx.Pipeline),
 		"organization": organizationObject(ctx.Organization),
+	}
+	for key, value := range flatAssignments(ctx) {
+		scope[key] = value
 	}
 
 	if stepAllowed(ctx.EntryPoint) {
@@ -143,6 +138,102 @@ func buildScope(ctx Context) object.Struct {
 	}
 
 	return scope
+}
+
+func envFunction(env map[string]string) object.Function {
+	return func(args []object.Object) object.Object {
+		name, err := envNameArg(args)
+		if err != nil {
+			return err
+		}
+		return &object.String{Value: env[name]}
+	}
+}
+
+func nullableEnvFunction(env map[string]string) object.Function {
+	return func(args []object.Object) object.Object {
+		name, err := envNameArg(args)
+		if err != nil {
+			return err
+		}
+		value, ok := env[name]
+		if !ok {
+			return &object.Null{}
+		}
+		return &object.String{Value: value}
+	}
+}
+
+func envNameArg(args []object.Object) (string, *object.Error) {
+	if len(args) != 1 {
+		return "", &object.Error{Message: fmt.Sprintf("wrong number of arguments for env: got %d, want 1", len(args))}
+	}
+	name, ok := args[0].(*object.String)
+	if !ok {
+		return "", &object.Error{Message: "env argument must be a string"}
+	}
+	return name.Value, nil
+}
+
+func flatAssignments(ctx Context) object.Struct {
+	build := ctx.Build
+	assignments := object.Struct{
+		"build.id":                            stringValue(build.ID),
+		"build.state":                         stringValue(build.State),
+		"build.fixed":                         boolValue(build.Fixed),
+		"build.blocked_state":                 stringValue(build.BlockedState),
+		"build.source":                        stringValue(build.Source),
+		"build.source_event":                  stringValue(sourceEvent(ctx)),
+		"build.source_action":                 stringValue(sourceAction(ctx)),
+		"build.branch":                        stringValue(build.Branch),
+		"build.tag":                           stringValue(build.Tag),
+		"build.message":                       stringValue(build.Message),
+		"build.commit":                        stringValue(build.Commit),
+		"build.number":                        intValue(build.Number),
+		"build.creator.id":                    stringValue(build.Creator.ID),
+		"build.creator.name":                  stringValue(build.Creator.Name),
+		"build.creator.email":                 stringValue(build.Creator.Email),
+		"build.creator.teams":                 stringArrayValue(build.Creator.Teams),
+		"build.creator.verified":              boolValue(build.Creator.Verified),
+		"build.author.id":                     stringValue(build.Author.ID),
+		"build.author.name":                   stringValue(build.Author.Name),
+		"build.author.email":                  stringValue(build.Author.Email),
+		"build.author.teams":                  stringArrayValue(build.Author.Teams),
+		"build.scm.author.name":               stringValue(build.SCM.AuthorName),
+		"build.scm.author.email":              stringValue(build.SCM.AuthorEmail),
+		"build.scm.committer.name":            stringValue(build.SCM.CommitterName),
+		"build.scm.committer.email":           stringValue(build.SCM.CommitterEmail),
+		"build.pull_request.id":               stringValue(build.PullRequest.ID),
+		"build.pull_request.base_branch":      stringValue(build.PullRequest.BaseBranch),
+		"build.pull_request.draft":            boolValue(build.PullRequest.Draft),
+		"build.pull_request.label":            stringValue(pullRequestLabel(ctx)),
+		"build.pull_request.labels":           stringArrayValue(build.PullRequest.Labels),
+		"build.pull_request.repository":       stringValue(build.PullRequest.Repository),
+		"build.pull_request.repository.fork":  boolValue(build.PullRequest.RepositoryFork),
+		"build.merge_queue.base_branch":       stringValue(build.MergeQueue.BaseBranch),
+		"build.merge_queue.base_commit":       stringValue(build.MergeQueue.BaseCommit),
+		"pipeline.id":                         stringValue(ctx.Pipeline.ID),
+		"pipeline.slug":                       stringValue(ctx.Pipeline.Slug),
+		"pipeline.default_branch":             stringValue(ctx.Pipeline.DefaultBranch),
+		"pipeline.repository":                 stringValue(ctx.Pipeline.Repository),
+		"pipeline.started_passing":            boolValue(ctx.Pipeline.StartedPassing),
+		"pipeline.started_failing":            boolValue(ctx.Pipeline.StartedFailing),
+		"pipeline.next_finished_build_exists": boolValue(ctx.Pipeline.NextFinishedBuildExists),
+		"organization.id":                     stringValue(ctx.Organization.ID),
+		"organization.slug":                   stringValue(ctx.Organization.Slug),
+	}
+
+	if stepAllowed(ctx.EntryPoint) {
+		step := stepObject(ctx.Step)
+		assignments["step.id"] = step["id"]
+		assignments["step.key"] = step["key"]
+		assignments["step.type"] = step["type"]
+		assignments["step.label"] = step["label"]
+		assignments["step.state"] = step["state"]
+		assignments["step.outcome"] = step["outcome"]
+	}
+
+	return assignments
 }
 
 func buildObject(ctx Context) object.Struct {
@@ -271,6 +362,10 @@ func sourceAction(ctx Context) *string {
 func pullRequestLabel(ctx Context) *string {
 	event := sourceEvent(ctx)
 	if event == nil || *event != "pull_request" {
+		return nil
+	}
+	action := sourceAction(ctx)
+	if action == nil || (*action != "labeled" && *action != "unlabeled") {
 		return nil
 	}
 	return ctx.Build.PullRequest.Label

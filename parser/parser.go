@@ -20,8 +20,8 @@ const (
 	AND    // &&
 	EQUALS // ==
 	PREFIX // !X
-	DOT    // foo.bar
 	CALL   // myfunction(true)
+	DOT    // foo.bar
 )
 
 var precedences = map[token.TokenType]int{
@@ -310,16 +310,38 @@ func (p *Parser) parseGroupedExpression() ast.Expression {
 func (p *Parser) parseCallExpression(function ast.Expression) ast.Expression {
 	defer untrace(trace("parseCallExpression"))
 
-	ident, ok := function.(*ast.Identifier)
+	name, ok := functionName(function)
 	if !ok {
 		msg := fmt.Sprintf("function call must be an identifier, got %v", p.curToken.Type)
 		p.errors = append(p.errors, msg)
 		return nil
 	}
 
-	exp := &ast.CallExpression{Token: p.curToken, Function: ident.Value}
+	exp := &ast.CallExpression{Token: p.curToken, Function: name}
 	exp.Arguments = p.parseExpressionList(token.RPAREN)
 	return exp
+}
+
+func functionName(function ast.Expression) (string, bool) {
+	switch function := function.(type) {
+	case *ast.Identifier:
+		return function.Value, true
+	case *ast.InfixExpression:
+		if function.Operator != token.DOT {
+			return "", false
+		}
+		left, ok := functionName(function.Left)
+		if !ok {
+			return "", false
+		}
+		right, ok := function.Right.(*ast.Identifier)
+		if !ok {
+			return "", false
+		}
+		return left + "." + right.Value, true
+	default:
+		return "", false
+	}
 }
 
 func (p *Parser) parseExpressionList(end token.TokenType) []ast.Expression {

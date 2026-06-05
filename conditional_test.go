@@ -59,6 +59,85 @@ func TestEvaluateMergesProjectEnvBeforeBuildEnv(t *testing.T) {
 	}
 }
 
+func TestEvaluateBuildEnvReturnsNullForMissingVariables(t *testing.T) {
+	got, err := Evaluate(`build.env("PROJECTED") == "fully" && build.env("EMPTY") == "" && build.env("MISSING") == null`, Context{
+		EntryPoint: EntryPointBuildCondition,
+		ProjectEnv: map[string]string{
+			"PROJECTED": "fully",
+		},
+		BuildEnv: map[string]string{
+			"EMPTY": "",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Evaluate returned error: %v", err)
+	}
+	if !got {
+		t.Fatalf("Evaluate returned false, want true")
+	}
+}
+
+func TestEvaluatePullRequestRepositoryAndFork(t *testing.T) {
+	repository := "git@github.com:acme/repo.git"
+	fork := true
+
+	got, err := Evaluate(`build.pull_request.repository == "git@github.com:acme/repo.git" && build.pull_request.repository.fork`, Context{
+		EntryPoint: EntryPointBuildCondition,
+		Build: Build{
+			PullRequest: PullRequest{
+				Repository:     &repository,
+				RepositoryFork: &fork,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Evaluate returned error: %v", err)
+	}
+	if !got {
+		t.Fatalf("Evaluate returned false, want true")
+	}
+}
+
+func TestEvaluatePullRequestLabelRequiresLabelAction(t *testing.T) {
+	source := "webhook"
+	event := "pull_request"
+	label := "test-gpu"
+	opened := "opened"
+	labeled := "labeled"
+
+	got, err := Evaluate(`build.pull_request.label == null`, Context{
+		EntryPoint: EntryPointBuildCondition,
+		Build: Build{
+			Source:       &source,
+			SourceEvent:  &event,
+			SourceAction: &opened,
+			PullRequest:  PullRequest{Label: &label},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Evaluate returned error: %v", err)
+	}
+	if !got {
+		t.Fatalf("Evaluate returned false, want true")
+	}
+
+	got, err = Evaluate(`build.pull_request.label == "test-gpu"`, Context{
+		EntryPoint: EntryPointBuildCondition,
+		Build: Build{
+			Source:       &source,
+			SourceEvent:  &event,
+			SourceAction: &labeled,
+			PullRequest:  PullRequest{Label: &label},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Evaluate returned error: %v", err)
+	}
+	if !got {
+		t.Fatalf("Evaluate returned false, want true")
+	}
+}
+
 func TestEvaluateReturnsParseError(t *testing.T) {
 	_, err := Evaluate(`nope != == one`, Context{EntryPoint: EntryPointBuildCondition})
 	if !IsErrorKind(err, ErrorKindParse) {
