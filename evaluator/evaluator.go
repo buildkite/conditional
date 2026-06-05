@@ -36,6 +36,9 @@ func Eval(node ast.Node, scope Scope) object.Object {
 	case *ast.Boolean:
 		return nativeBoolToBooleanObject(node.Value)
 
+	case *ast.Null:
+		return NULL
+
 	case *ast.PrefixExpression:
 		right := Eval(node.Right, scope)
 		if isError(right) {
@@ -47,6 +50,10 @@ func Eval(node ast.Node, scope Scope) object.Object {
 		left := Eval(node.Left, scope)
 		if isError(left) {
 			return left
+		}
+
+		if node.Operator == "&&" || node.Operator == "||" {
+			return evalLogicalExpression(node.Operator, left, node.Right, scope)
 		}
 
 		var right object.Object
@@ -133,16 +140,16 @@ func evalInfixExpression(operator string, left, right object.Object) object.Obje
 		return evalIntegerInfixExpression(operator, left, right)
 	case left.Type() == object.STRING_OBJ && right.Type() == object.STRING_OBJ:
 		return evalStringInfixExpression(operator, left, right)
-	case left.Type() == object.STRUCT_OBJ && right.Type() == object.STRING_OBJ:
+	case operator == "." && left.Type() == object.STRUCT_OBJ && right.Type() == object.STRING_OBJ:
 		return evalDotExpression(left, right)
 	case left.Type() == object.STRING_OBJ && right.Type() == object.REGEXP_OBJ:
 		return evalStringRegexpInfixExpression(operator, left, right)
 	case left.Type() == object.ARRAY_OBJ:
 		return evalArrayInfixExpression(operator, left, right)
 	case operator == "==":
-		return nativeBoolToBooleanObject(left == right)
+		return nativeBoolToBooleanObject(left.Type() == right.Type() && left.Equals(right))
 	case operator == "!=":
-		return nativeBoolToBooleanObject(left != right)
+		return nativeBoolToBooleanObject(left.Type() != right.Type() || !left.Equals(right))
 	case left.Type() != right.Type():
 		return newError("type mismatch: %s %s %s",
 			left.Type(), operator, right.Type())
@@ -150,6 +157,36 @@ func evalInfixExpression(operator string, left, right object.Object) object.Obje
 		return newError("unknown operator: %s %s %s",
 			left.Type(), operator, right.Type())
 	}
+}
+
+func evalLogicalExpression(operator string, left object.Object, rightExp ast.Expression, scope Scope) object.Object {
+	leftVal, ok := left.(*object.Boolean)
+	if !ok {
+		return newError("type mismatch: %s %s BOOLEAN", left.Type(), operator)
+	}
+
+	switch operator {
+	case "&&":
+		if !leftVal.Value {
+			return FALSE
+		}
+	case "||":
+		if leftVal.Value {
+			return TRUE
+		}
+	}
+
+	right := Eval(rightExp, scope)
+	if isError(right) {
+		return right
+	}
+
+	rightVal, ok := right.(*object.Boolean)
+	if !ok {
+		return newError("type mismatch: BOOLEAN %s %s", operator, right.Type())
+	}
+
+	return nativeBoolToBooleanObject(rightVal.Value)
 }
 
 func evalBangOperatorExpression(right object.Object) object.Object {
@@ -240,7 +277,7 @@ func evalArrayInfixExpression(operator string, left, right object.Object) object
 	leftVal := left.(*object.Array)
 
 	switch operator {
-	case "@>":
+	case "@>", "includes":
 		contains, err := arrayContains(leftVal, right)
 		if err != nil {
 			return newError("%s", err.Error())

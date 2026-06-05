@@ -28,6 +28,8 @@ func TestEvalBooleanExpression(t *testing.T) {
 		{"true == false", false},
 		{"true != false", true},
 		{"false != true", true},
+		{"null == null", true},
+		{"null != null", false},
 		{"'a' =~ /a/", true},
 		{"'b' !~ /a/", true},
 	}
@@ -49,6 +51,61 @@ func TestBangOperator(t *testing.T) {
 		{"!!true", true},
 		{"!!false", false},
 		{"!!5", true},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		testBooleanObject(t, evaluated, tt.expected)
+	}
+}
+
+func TestEvalBooleanObjectComparison(t *testing.T) {
+	scope := object.Struct{
+		"build": object.Struct{
+			"pull_request": object.Struct{
+				"draft": &object.Boolean{Value: false},
+			},
+		},
+	}
+
+	evaluated := testEvalWithScope(`build.pull_request.draft == false`, scope)
+	testBooleanObject(t, evaluated, true)
+}
+
+func TestEvalNullComparison(t *testing.T) {
+	scope := object.Struct{
+		"build": object.Struct{
+			"tag": &object.Null{},
+		},
+	}
+
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{`build.tag == null`, true},
+		{`build.tag != null`, false},
+		{`build.tag == "v1.0.0"`, false},
+		{`build.tag != "v1.0.0"`, true},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEvalWithScope(tt.input, scope)
+		testBooleanObject(t, evaluated, tt.expected)
+	}
+}
+
+func TestLogicalOperators(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{"true && true", true},
+		{"true && false", false},
+		{"false || true", true},
+		{"false || false", false},
+		{"false && missing.value", false},
+		{"true || missing.value", true},
 	}
 
 	for _, tt := range tests {
@@ -123,6 +180,8 @@ func TestContainsOperator(t *testing.T) {
 		input    string
 		expected bool
 	}{
+		{`["llamas","alpacas"] includes 'alpacas'`, true},
+		{`["llamas","alpacas"] includes 'sheep'`, false},
 		{`["llamas","alpacas"] @> 'alpacas'`, true},
 		{`["llamas","alpacas"] @> 'sheep'`, false},
 		{`[1,2,3] @> 2`, true},
@@ -132,6 +191,22 @@ func TestContainsOperator(t *testing.T) {
 		evaluated := testEval(tt.input)
 		testBooleanObject(t, evaluated, tt.expected)
 	}
+}
+
+func TestContainsOperatorWithScopeArray(t *testing.T) {
+	scope := object.Struct{
+		"build": object.Struct{
+			"creator": object.Struct{
+				"teams": &object.Array{Elements: []object.Object{
+					&object.String{Value: "deploy"},
+					&object.String{Value: "platform"},
+				}},
+			},
+		},
+	}
+
+	evaluated := testEvalWithScope(`build.creator.teams includes "deploy"`, scope)
+	testBooleanObject(t, evaluated, true)
 }
 
 func testEval(input string) object.Object {

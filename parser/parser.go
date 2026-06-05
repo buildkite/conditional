@@ -27,6 +27,7 @@ var precedences = map[token.TokenType]int{
 	token.RE_EQ:     EQUALS,
 	token.RE_NOT_EQ: EQUALS,
 	token.CONTAINS:  EQUALS,
+	token.INCLUDES:  EQUALS,
 	token.AND:       AND,
 	token.OR:        OR,
 	token.LPAREN:    CALL,
@@ -63,6 +64,7 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerPrefix(token.BANG, p.parsePrefixExpression)
 	p.registerPrefix(token.TRUE, p.parseBoolean)
 	p.registerPrefix(token.FALSE, p.parseBoolean)
+	p.registerPrefix(token.NULL, p.parseNull)
 	p.registerPrefix(token.LPAREN, p.parseGroupedExpression)
 	p.registerPrefix(token.LBRACKET, p.parseArrayLiteral)
 
@@ -72,6 +74,7 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerInfix(token.RE_EQ, p.parseInfixExpression)
 	p.registerInfix(token.RE_NOT_EQ, p.parseInfixExpression)
 	p.registerInfix(token.CONTAINS, p.parseInfixExpression)
+	p.registerInfix(token.INCLUDES, p.parseInfixExpression)
 	p.registerInfix(token.AND, p.parseInfixExpression)
 	p.registerInfix(token.OR, p.parseInfixExpression)
 	p.registerInfix(token.DOT, p.parseInfixExpression)
@@ -130,7 +133,18 @@ func (p *Parser) Parse() ast.Expression {
 		return nil
 	}
 
-	return p.parseExpression(LOWEST)
+	exp := p.parseExpression(LOWEST)
+	if exp == nil {
+		return nil
+	}
+
+	if !p.peekTokenIs(token.EOF) {
+		msg := fmt.Sprintf("unexpected token after expression: %s (%q)",
+			p.peekToken.Type, p.peekToken.Literal)
+		p.errors = append(p.errors, msg)
+	}
+
+	return exp
 }
 
 func (p *Parser) parseExpression(precedence int) ast.Expression {
@@ -247,6 +261,10 @@ func (p *Parser) parseBoolean() ast.Expression {
 	// defer untrace(trace("parseBoolean"))
 
 	return &ast.Boolean{Token: p.curToken, Value: p.curTokenIs(token.TRUE)}
+}
+
+func (p *Parser) parseNull() ast.Expression {
+	return &ast.Null{Token: p.curToken}
 }
 
 func (p *Parser) parseGroupedExpression() ast.Expression {
