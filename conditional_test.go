@@ -82,6 +82,7 @@ func TestEvaluateDerivesSupportedBuildkiteEnv(t *testing.T) {
 	tag := "v1.2.3"
 	message := "ship it"
 	commit := "abc123"
+	pipelineName := "Deploy"
 	pipelineSlug := "deploy"
 	pipelineID := "018f"
 	repository := "git@github.com:acme/repo.git"
@@ -95,6 +96,7 @@ func TestEvaluateDerivesSupportedBuildkiteEnv(t *testing.T) {
 		build.env("BUILDKITE_TAG") == "v1.2.3" &&
 		env("BUILDKITE_MESSAGE") == "ship it" &&
 		build.env("BUILDKITE_COMMIT") == "abc123" &&
+		build.env("BUILDKITE_PIPELINE_NAME") == "Deploy" &&
 		build.env("BUILDKITE_PIPELINE_SLUG") == "deploy" &&
 		build.env("BUILDKITE_PIPELINE_ID") == "018f" &&
 		build.env("BUILDKITE_REPO") == "git@github.com:acme/repo.git" &&
@@ -114,7 +116,7 @@ func TestEvaluateDerivesSupportedBuildkiteEnv(t *testing.T) {
 			PullRequest: PullRequest{ID: &pullRequestID, BaseBranch: &pullRequestBaseBranch, Repository: &repository, Labels: []string{"bug", "deploy"}},
 			MergeQueue:  MergeQueue{BaseBranch: &mergeQueueBaseBranch, BaseCommit: &mergeQueueBaseCommit},
 		},
-		Pipeline:     Pipeline{Slug: &pipelineSlug, ID: &pipelineID, Repository: &repository},
+		Pipeline:     Pipeline{Name: &pipelineName, Slug: &pipelineSlug, ID: &pipelineID, Repository: &repository},
 		Organization: Organization{Slug: &organizationSlug},
 	})
 	if err != nil {
@@ -254,6 +256,20 @@ func TestNotificationEntryPointAllowsBlankCondition(t *testing.T) {
 func TestValidateAcceptsBlank(t *testing.T) {
 	if err := Validate("   ", Context{EntryPoint: EntryPointBuildCondition}); err != nil {
 		t.Fatalf("Validate returned error: %v", err)
+	}
+}
+
+func TestValidateRejectsMalformedEnvCalls(t *testing.T) {
+	tests := []string{
+		`env() == ""`,
+		`build.env("FOO", "BAR") == null`,
+	}
+
+	for _, expression := range tests {
+		err := Validate(expression, Context{EntryPoint: EntryPointBuildCondition})
+		if !IsErrorKind(err, ErrorKindValidation) {
+			t.Fatalf("Validate(%q) error = %v, want %s", expression, err, ErrorKindValidation)
+		}
 	}
 }
 

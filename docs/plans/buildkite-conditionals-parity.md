@@ -221,6 +221,7 @@ type Actor struct {
 
 type Pipeline struct {
 	ID                      *string
+	Name                    *string
 	Slug                    *string
 	DefaultBranch           *string
 	Repository              *string

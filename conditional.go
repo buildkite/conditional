@@ -108,7 +108,13 @@ func validateEnvCalls(expr ast.Expression) error {
 		}
 		return validateEnvCalls(expr.Right)
 	case *ast.CallExpression:
-		if (expr.Function == "env" || expr.Function == "build.env") && len(expr.Arguments) == 1 {
+		if expr.Function == "env" || expr.Function == "build.env" {
+			if len(expr.Arguments) != 1 {
+				return &Error{
+					Kind:    ErrorKindValidation,
+					Message: fmt.Sprintf("%s expects exactly one argument", expr.Function),
+				}
+			}
 			if arg, ok := expr.Arguments[0].(*ast.StringLiteral); ok && unsupportedBuildkiteEnv(arg.Value) {
 				return &Error{
 					Kind:    ErrorKindValidation,
@@ -254,6 +260,7 @@ func flatAssignments(ctx Context) object.Struct {
 		"build.merge_queue.base_branch":       stringValue(build.MergeQueue.BaseBranch),
 		"build.merge_queue.base_commit":       stringValue(build.MergeQueue.BaseCommit),
 		"pipeline.id":                         stringValue(ctx.Pipeline.ID),
+		"pipeline.name":                       stringValue(ctx.Pipeline.Name),
 		"pipeline.slug":                       stringValue(ctx.Pipeline.Slug),
 		"pipeline.default_branch":             stringValue(ctx.Pipeline.DefaultBranch),
 		"pipeline.repository":                 stringValue(ctx.Pipeline.Repository),
@@ -337,6 +344,7 @@ func actorObject(actor Actor, includeVerified bool) object.Struct {
 func pipelineObject(pipeline Pipeline) object.Struct {
 	return object.Struct{
 		"id":                         stringValue(pipeline.ID),
+		"name":                       stringValue(pipeline.Name),
 		"slug":                       stringValue(pipeline.Slug),
 		"default_branch":             stringValue(pipeline.DefaultBranch),
 		"repository":                 stringValue(pipeline.Repository),
@@ -496,6 +504,7 @@ func builtinEnv(ctx Context) map[string]string {
 	setString(env, "BUILDKITE_COMMIT", ctx.Build.Commit)
 	setString(env, "BUILDKITE_REPO", ctx.Pipeline.Repository)
 	setString(env, "BUILDKITE_PIPELINE_SLUG", ctx.Pipeline.Slug)
+	setString(env, "BUILDKITE_PIPELINE_NAME", ctx.Pipeline.Name)
 	setString(env, "BUILDKITE_PIPELINE_ID", ctx.Pipeline.ID)
 	setString(env, "BUILDKITE_ORGANIZATION_SLUG", ctx.Organization.Slug)
 

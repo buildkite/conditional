@@ -66,6 +66,7 @@ type Actor struct {
 // Pipeline contains pipeline values exposed to conditionals.
 type Pipeline struct {
 	ID                      *string
+	Name                    *string
 	Slug                    *string
 	DefaultBranch           *string
 	Repository              *string
