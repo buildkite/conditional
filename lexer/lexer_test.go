@@ -18,6 +18,9 @@ func TestLexingIndividualTerms(t *testing.T) {
 	expectTokens(t, `false`, []tokenExpectation{
 		{token.FALSE, `false`},
 	})
+	expectTokens(t, `null`, []tokenExpectation{
+		{token.NULL, `null`},
+	})
 	expectTokens(t, `"true"`, []tokenExpectation{
 		{token.STRING, `true`},
 	})
@@ -80,6 +83,15 @@ func TestLexingRegexps(t *testing.T) {
 }
 
 func TestLexingArrays(t *testing.T) {
+	expectTokens(t, `build.creator.teams includes "deploy"`, []tokenExpectation{
+		{token.IDENT, "build"},
+		{token.DOT, "."},
+		{token.IDENT, "creator"},
+		{token.DOT, "."},
+		{token.IDENT, "teams"},
+		{token.INCLUDES, "includes"},
+		{token.STRING, "deploy"},
+	})
 	expectTokens(t, `["llamas", "alpacas"] @> "alpacas"`, []tokenExpectation{
 		{token.LBRACKET, "["},
 		{token.STRING, "llamas"},

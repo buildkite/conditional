@@ -8,13 +8,13 @@ A small c-like language for evaluating boolean conditions, used in Buildkite's p
 * Logical operators: `|| &&`
 * Integers `12345`
 * Strings `'foobar' or "foobar"`
-* Booleans `true false`
+* Booleans and nulls `true false null`
 * Parenthesis to control order of evaluation `( )`
 * Object dereferencing `foo.bar`
 * Regular expressions `/^v1\.0/`
 * Function calls `foo("bar")`
 * Prefixes: `!`
-* Arrays: `["foo","bar"] @> "foo"`
+* Arrays: `["foo","bar"] includes "foo"` (`@>` is also supported for compatibility)
 
 ### Syntax Examples
 
@@ -22,6 +22,7 @@ A small c-like language for evaluating boolean conditions, used in Buildkite's p
 // individual terms
 true
 false
+null
 
 // compare values
 build.branch == "master"
@@ -40,7 +41,7 @@ build.tag =~ /^v/
 ((build.tag =~ ^v) || (meta-data("foo") == "bar"))
 
 // array operations
-["master","staging"] @> build.branch
+["master","staging"] includes build.branch
 ```
 
 ## Usage

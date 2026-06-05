@@ -21,6 +21,7 @@ const (
 	RE_EQ     = "=~"
 	RE_NOT_EQ = "!~"
 	CONTAINS  = "@>"
+	INCLUDES  = "includes"
 
 	// Boolean Operators
 	AND = "&&"
@@ -36,6 +37,7 @@ const (
 	// Keywords
 	TRUE  = "TRUE"
 	FALSE = "FALSE"
+	NULL  = "NULL"
 )
 
 type Token struct {
@@ -44,8 +46,10 @@ type Token struct {
 }
 
 var keywords = map[string]TokenType{
-	"true":  TRUE,
-	"false": FALSE,
+	"true":     TRUE,
+	"false":    FALSE,
+	"null":     NULL,
+	"includes": INCLUDES,
 }
 
 func LookupIdent(ident string) TokenType {

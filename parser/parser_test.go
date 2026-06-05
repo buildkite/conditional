@@ -190,6 +190,23 @@ func TestBooleanExpression(t *testing.T) {
 	}
 }
 
+func TestNullExpression(t *testing.T) {
+	input := "null"
+
+	l := lexer.New(input)
+	p := New(l)
+	expr := p.Parse()
+	checkParserErrors(t, p)
+
+	null, ok := expr.(*ast.Null)
+	if !ok {
+		t.Fatalf("exp not *ast.Null. got=%T", expr)
+	}
+	if null.TokenLiteral() != "null" {
+		t.Errorf("null.TokenLiteral not %s. got=%s", "null", null.TokenLiteral())
+	}
+}
+
 func TestCallExpressionParsing(t *testing.T) {
 	input := "add(1, 2, 3)"
 
@@ -308,21 +325,46 @@ func TestParsingArrayLiterals(t *testing.T) {
 	testIdentifierOrString(t, array.Elements[1], "alpacas")
 }
 
-func TestParsingContainsOperator(t *testing.T) {
-	input := `["llamas", "alpacas"] @> "llamas"`
-
-	l := lexer.New(input)
-	p := New(l)
-	expr := p.Parse()
-	checkParserErrors(t, p)
-
-	iexpr, ok := expr.(*ast.InfixExpression)
-	if !ok {
-		t.Fatalf("exp is not ast.InfixExpression. got=%T(%s)", expr, expr)
+func TestParsingContainsOperators(t *testing.T) {
+	tests := []struct {
+		input    string
+		operator string
+	}{
+		{`build.creator.teams includes "deploy"`, "includes"},
+		{`["llamas", "alpacas"] @> "llamas"`, "@>"},
 	}
 
-	if iexpr.Operator != "@>" {
-		t.Fatalf("exp doesn't have contains operator. got=%s", iexpr.Operator)
+	for _, tt := range tests {
+		l := lexer.New(tt.input)
+		p := New(l)
+		expr := p.Parse()
+		checkParserErrors(t, p)
+
+		iexpr, ok := expr.(*ast.InfixExpression)
+		if !ok {
+			t.Fatalf("exp is not ast.InfixExpression. got=%T(%s)", expr, expr)
+		}
+
+		if iexpr.Operator != tt.operator {
+			t.Fatalf("exp doesn't have expected contains operator. want=%s got=%s", tt.operator, iexpr.Operator)
+		}
+	}
+}
+
+func TestParserRejectsTrailingTokens(t *testing.T) {
+	tests := []string{
+		`build.creator.teams "deploy"`,
+		`build.message !~ /\[skip tests\]/i`,
+	}
+
+	for _, input := range tests {
+		l := lexer.New(input)
+		p := New(l)
+		p.Parse()
+
+		if len(p.Errors()) == 0 {
+			t.Fatalf("expected parser errors for %q", input)
+		}
 	}
 }
 

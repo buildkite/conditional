@@ -42,9 +42,12 @@ type Boolean struct {
 	Value bool
 }
 
-func (b *Boolean) Type() ObjectType     { return BOOLEAN_OBJ }
-func (b *Boolean) String() string       { return fmt.Sprintf("%t", b.Value) }
-func (b *Boolean) Equals(o Object) bool { return b == o }
+func (b *Boolean) Type() ObjectType { return BOOLEAN_OBJ }
+func (b *Boolean) String() string   { return fmt.Sprintf("%t", b.Value) }
+func (b *Boolean) Equals(o Object) bool {
+	other, ok := o.(*Boolean)
+	return ok && b.Value == other.Value
+}
 
 type String struct {
 	Value string
