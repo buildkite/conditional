@@ -1,0 +1,11 @@
+agents:
+  queue: hosted
+
+cache: ".buildkite/cache-volume"
+
+steps:
+  - label: ":go: check"
+    key: check
+    plugins:
+      - mise#v1.1.2: ~
+    command: mise run check
