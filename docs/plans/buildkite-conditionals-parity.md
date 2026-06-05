@@ -130,26 +130,31 @@ context, and receive a boolean or a typed error.
 Public shape:
 
 ```go
-type ContextKind string
+type EntryPoint string
 
 const (
-	ContextPipelineWebhook     ContextKind = "pipeline_webhook"
-	ContextStepIf              ContextKind = "step_if"
-	ContextBuildNotification   ContextKind = "build_notification"
-	ContextStepNotification    ContextKind = "step_notification"
+	EntryPointBuildCondition         EntryPoint = "build_condition"
+	EntryPointBuildConditionWithStep EntryPoint = "build_condition_with_step"
+	EntryPointBuildNotification      EntryPoint = "build_notification"
+	EntryPointStepNotification       EntryPoint = "step_notification"
 )
 
-type BuildkiteContext struct {
-	Kind         ContextKind
+type Context struct {
+	EntryPoint EntryPoint
+
 	Build        Build
 	Pipeline     Pipeline
 	Organization Organization
 	Step         *Step
-	Env          map[string]string
+
+	// BuildEnv is build-scoped env. ProjectEnv is pipeline/project env.
+	// Merging these maps produces the server's Build::PipelineEnvironment.
+	BuildEnv   map[string]string
+	ProjectEnv map[string]string
 }
 
-func Validate(expression string, ctx BuildkiteContext) error
-func Evaluate(expression string, ctx BuildkiteContext) (bool, error)
+func Validate(expression string, ctx Context) error
+func Evaluate(expression string, ctx Context) (bool, error)
 ```
 
 The API should do the server work callers should not have to remember:
@@ -161,6 +166,121 @@ The API should do the server work callers should not have to remember:
   functions.
 - Evaluate to a final boolean and fail closed for every parser, validation,
   evaluation, regex, and non-boolean result error.
+
+The entrypoints should mirror the reachable server paths:
+
+- `EntryPointBuildCondition` matches `Build::Condition.evaluate`,
+  `Build::Condition.validate`, and `Build::Condition.context` without a step.
+- `EntryPointBuildConditionWithStep` matches the same server path with the
+  optional `step:` argument or validator `{ step: true }`.
+- `EntryPointBuildNotification` matches `Build::Notification#deliverable?`,
+  including false-on-parse/evaluation-error behavior.
+- `EntryPointStepNotification` matches `Step::Notification#deliverable?`,
+  including step variables and false-on-parse/evaluation-error behavior.
+
+Blank-string validation is a validator behavior, not an evaluator behavior:
+`Validate("", ctx)` should match the upstream validator's accepted blank case,
+while `Evaluate("", ctx)` should fail closed unless upstream evidence shows the
+server evaluates blank conditionals directly.
+
+Public context data should be explicit enough to preserve null versus empty
+values. Nullable scalar server values should use pointers, maps should preserve
+absent versus empty strings, and nil slices should represent server `null` where
+the server distinguishes `nil` from an empty array. The initial public data
+model should include at least:
+
+```go
+type Build struct {
+	ID           *string
+	State        *string
+	Fixed        *bool
+	BlockedState *string
+	Source       *string
+	SourceEvent  *string
+	SourceAction *string
+	Branch       *string
+	Tag          *string
+	Message      *string
+	Commit       *string
+	Number       *int
+
+	Creator     Actor
+	Author      Actor
+	SCM         SCM
+	PullRequest PullRequest
+	MergeQueue  MergeQueue
+}
+
+type Actor struct {
+	ID       *string
+	Name     *string
+	Email    *string
+	Teams    []string
+	Verified *bool
+}
+
+type Pipeline struct {
+	ID                      *string
+	Slug                    *string
+	DefaultBranch           *string
+	Repository              *string
+	StartedPassing          *bool
+	StartedFailing          *bool
+	NextFinishedBuildExists *bool
+}
+
+type SCM struct {
+	AuthorName     *string
+	AuthorEmail    *string
+	CommitterName  *string
+	CommitterEmail *string
+}
+
+type PullRequest struct {
+	ID             *string
+	BaseBranch     *string
+	Draft          *bool
+	Label          *string
+	Labels         []string
+	Repository     *string
+	RepositoryFork *bool
+}
+
+type MergeQueue struct {
+	BaseBranch *string
+	BaseCommit *string
+}
+
+type Organization struct {
+	ID   *string
+	Slug *string
+}
+
+type Step struct {
+	ID      *string
+	Key     *string
+	Type    *string
+	Label   *string
+	State   *string
+	Outcome *string
+}
+```
+
+Fields such as visible teams and preferred emails are caller-supplied
+database-backed facts. Pure conditional values are derived in-library when the
+server does so, such as `build.source_event` from `Build.SourceEvent` or
+`BUILDKITE_GITHUB_EVENT` when `Build.Source == "webhook"`.
+
+Environment merge behavior is part of the public contract:
+
+- `ProjectEnv` and `BuildEnv` are merged using server-compatible precedence.
+  The exact precedence must be sourced from `Build::PipelineEnvironment` and
+  captured in tests before implementing the merge.
+- A present empty string remains distinct from an absent key.
+- `env("NAME")` returns the merged value as a string, so absent values become
+  `""` when the server does that.
+- `build.env("NAME")` returns `null` for absent values and `""` for present
+  empty strings.
 
 Implementation packages should have clear responsibilities:
 
@@ -207,6 +327,31 @@ behavior:
   `spec/models/build/condition_spec.rb`, notification specs, and
   `spec/validators/build_condition_validator_spec.rb` are the primary source of
   conformance cases to port.
+
+## Upstream Spec Port Manifest
+
+Maintain a manifest while porting upstream specs. Each upstream spec group must
+end in exactly one state: `ported`, `blocked`, `intentionally_excluded`, or
+`superseded`. A slice should not claim parity for a feature until every relevant
+upstream group is accounted for.
+
+Initial manifest:
+
+| Upstream source | Groups to account for | Required status before parity claim |
+| --- | --- | --- |
+| `spec/models/conditional/parser_spec.rb` | friendly errors, comments, objects/properties, function calls, complex strings, simple expressions, operand precedence, negation, token positions | `ported` or `intentionally_excluded` with reason |
+| `spec/models/conditional/evaluator_spec.rb` | booleans, nulls, arrays, regexes, string comparisons, ternaries, variables/enums, shell substitutions | `ported` |
+| `spec/models/conditional/variable_spec.rb` | typed variables, nullable typed values, enums, lazy values | `ported` or `superseded` by Go type/context tests |
+| `spec/models/build/condition_spec.rb` | `env()`, `build.env()`, build/pipeline/org fields, webhook fields, pull request label, project env merge, validation, context construction | `ported` |
+| `spec/validators/build_condition_validator_spec.rb` | blank/nil validation, invalid conditionals, step-variable validation option | `ported` |
+| `spec/models/build/notification_spec.rb` | no conditional, false on unmet condition, false on parser/evaluation errors | `ported` |
+| `spec/models/step/notification_spec.rb` | step variables and false-on-error notification behavior | `ported` |
+| `spec/models/build/pipeline_config/build_notifications_spec.rb` | config parsing and notification conditional propagation | `blocked` until config parsing is in scope, or `intentionally_excluded` with reason |
+| `spec/models/build/pipeline_config/step_notifications_spec.rb` | config parsing and step notification conditional propagation | `blocked` until config parsing is in scope, or `intentionally_excluded` with reason |
+
+The manifest can live in this plan while work is small. If it becomes too large,
+move it to `docs/plans/buildkite-conditionals-upstream-manifest.md` and link it
+from this plan.
 
 ## Current State
 
@@ -295,6 +440,17 @@ The plan should not assume all variables are valid in all contexts. The docs
 explicitly call out context-specific behavior, such as `build.state` for
 notification-level conditionals and `step.*` for step notifications.
 
+The public `EntryPoint` values should come from server entrypoints, not from
+pipeline concepts invented in this repo:
+
+- `Build::Condition` without `step` means build, pipeline, organization, and
+  build env assignments are available; `step.*` is invalid.
+- `Build::Condition` with `step` or validator `{ step: true }` adds `step.*`.
+- `Build::Notification#deliverable?` uses build condition evaluation and returns
+  false instead of surfacing parser/evaluation errors.
+- `Step::Notification#deliverable?` uses build condition evaluation with step
+  assignments and returns false instead of surfacing parser/evaluation errors.
+
 ## Go Design Constraints
 
 The final codebase should be a small Go library, not a transliteration of the
@@ -330,7 +486,35 @@ Additional Go constraints:
 
 ## Delivery Strategy
 
-### Slice 1: Idiomatic Go Conformance Test Suite
+### Slice 1: Public API, Context Model, And Manifest Foundation
+
+Create the root package API and public context model before the broader
+conformance suite. This slice gives later tests a stable surface to compile
+against and removes the risk of designing tests around internal packages.
+
+Definition of done:
+
+- `EntryPoint`, `Context`, `Build`, `Pipeline`, `Organization`, `Step`, and
+  nested context structs exist in the root package with doc comments.
+- `Validate(expression, ctx)` and `Evaluate(expression, ctx)` exist in the root
+  package and fail closed through typed error categories.
+- EntryPoint behavior is derived from upstream server paths:
+  `Build::Condition` without step, `Build::Condition` with step,
+  `Build::Notification#deliverable?`, and `Step::Notification#deliverable?`.
+- The root API can represent absent versus empty string values, nil versus empty
+  arrays, build env versus project env, webhook source event/action inputs,
+  teams, preferred emails, and nullable fields.
+- The exact `BuildEnv`/`ProjectEnv` merge order is documented from
+  `Build::PipelineEnvironment`, not inferred from public docs.
+- Existing subpackages are either moved under `internal/` or a package migration
+  map is committed in this slice showing the exact follow-up move. The final
+  state remains internal implementation packages plus root public API.
+- The upstream spec port manifest is committed with statuses for every upstream
+  spec group listed above.
+- Add a small smoke test set through the root API for a passing expression, a
+  parser error, a non-boolean result, and a notification false-on-error path.
+
+### Slice 2: Idiomatic Go Conformance Test Suite
 
 Create the test shape before more feature work. Keep the test data in Go code so
 cases are easy to read, refactor, and debug with normal `go test` output. Do not
@@ -356,9 +540,7 @@ tests := []struct {
 	name       string
 	source     string
 	expression string
-	context    ContextKind
-	build      Build
-	env        map[string]string
+	ctx        Context
 	want       bool
 	wantError  errorKind
 }{
@@ -366,20 +548,24 @@ tests := []struct {
 		name:       "docs branch starts with features slash",
 		source:     "docs/pipelines/configure/conditionals",
 		expression: `build.branch =~ /^features\//`,
-		context:    ContextStepIf,
-		build:      Build{Branch: "features/foo"},
+		ctx: Context{
+			EntryPoint: EntryPointBuildCondition,
+			Build:      Build{Branch: str("features/foo")},
+		},
 		want: true,
 	},
 	{
 		name:       "missing tag is null",
 		source:     "buildkite/buildkite spec/models/conditional/evaluator_spec.rb",
 		expression: `build.tag == null`,
-		context:    ContextStepIf,
-		build:      Build{},
+		ctx:        Context{EntryPoint: EntryPointBuildCondition},
 		want: true,
 	},
 }
 ```
+
+`str` in examples is a test helper that returns `*string`; production callers can
+use pointers directly or helper constructors if the final API provides them.
 
 Upstream sources to port:
 
@@ -432,6 +618,9 @@ Definition of done:
 - Every docs example expression is represented in table-driven tests.
 - Ported upstream examples carry a `source` string that points back to the
   originating `buildkite/buildkite` spec file.
+- Every upstream group in the manifest is marked `ported`, `blocked`,
+  `intentionally_excluded`, or `superseded`; easy cases cannot be silently
+  cherry-picked while hard groups disappear.
 - Server-supported upstream cases are either passing tests or recorded in this
   plan as the next implementation slice. Do not land permanently skipped parity
   tests.
@@ -442,23 +631,6 @@ Definition of done:
 - Existing unit tests still run through `mise run check`.
 - The helper makes parser errors visible; tests must not evaluate a nil or
   erroneous AST by accident.
-
-### Slice 2: Public API And Package Boundary
-
-Add the root `conditional` package API and make implementation package ownership
-clear.
-
-Definition of done:
-
-- `Validate(expression, ctx)` and `Evaluate(expression, ctx)` exist in the root
-  package.
-- Exported context structs and enums have doc comments and stable field names.
-- Parser, type-checker, evaluator, and regex errors are returned as typed Go
-  errors or error categories.
-- Non-boolean final objects are errors.
-- Table-driven conformance tests use the root API for parity assertions.
-- Implementation packages are moved under `internal/` so the root package is the
-  only supported library API.
 
 ### Slice 3: Parser Grammar Parity
 
@@ -531,6 +703,22 @@ Definition of done:
 Keep regexp2 as the matcher, but validate regex syntax against the server's
 accepted feature set.
 
+Validator strategy:
+
+1. Parse literal delimiters and flags in the conditional parser. Only no flag or
+   `i` is accepted.
+2. Run a dedicated regex validator before compiling with regexp2. The validator
+   should reject explicit server-denied constructs from `Conditional::Regexp`:
+   lookbehind, negative lookbehind, atomic groups, possessive quantifiers,
+   named captures, and regex conditionals.
+3. Compile with regexp2 only after validation, with the existing timeout.
+4. Maintain an accepted/rejected regex matrix sourced from
+   `spec/models/conditional/evaluator_spec.rb`,
+   `app/models/conditional/regexp.rb`, and any additional upstream regex tests.
+5. If Ruby `Regexp::Scanner` rejects a construct that cannot be classified with
+   a simple lexical validator, add a focused parser/validator case and record
+   the reason in the manifest before claiming regex parity.
+
 Required coverage:
 
 - RHS-only regex matching.
@@ -567,7 +755,7 @@ Definition of done:
   available in conditional expressions.
 - Nested object lookup is not part of the Buildkite evaluation surface unless it
   is only an internal representation of flat assignments.
-- Public docs describe the root package API, context kinds, variable
+- Public docs describe the root package API, entrypoints, variable
   availability, supported syntax, and fail-closed behavior.
 - Package boundaries are reviewed for cohesion, exported identifiers, comments,
   and unnecessary interfaces.
@@ -655,6 +843,9 @@ Add these targeted checks as the plan lands:
   shape, including moving implementation packages under `internal/`.
 - Root-package `Validate(expression, ctx)` and `Evaluate(expression, ctx)` are
   the public API names.
+- Public entrypoints are derived from reachable server paths:
+  `Build::Condition` without step, `Build::Condition` with step,
+  `Build::Notification#deliverable?`, and `Step::Notification#deliverable?`.
 - Error parity means exact accept/reject behavior, stable Go error categories,
   and source location where meaningful. Byte-for-byte Ruby error text is not a
   requirement for the first parity release.
@@ -663,6 +854,10 @@ Add these targeted checks as the plan lands:
   as visible teams and preferred emails.
 - Implementation packages should move under `internal/` once the root API is in
   place.
+- Upstream spec porting requires a manifest with a status for every relevant
+  spec group. A feature cannot claim parity from cherry-picked tests alone.
+- Slice 1 is the root API/context/manifest foundation; the broader table-driven
+  conformance suite starts in Slice 2 so it has a compiling public API to target.
 
 ## Deferred Work
 
@@ -688,10 +883,17 @@ Add these targeted checks as the plan lands:
 - Table-driven conformance tests should land before more behavior changes. They
   give every follow-up PR a durable place to encode docs examples, server
   observations, and regressions.
+- Conformance tests still need a public API to compile against. The first slice
+  now creates the root API, context model, and manifest foundation before the
+  broader table suite lands.
 - The upstream `buildkite/buildkite` specs provide the best available parity
   corpus. Porting those examples into Go tables should be the default source of
   new tests, with invented cases reserved for gaps the upstream specs and docs
   do not cover.
+- "Port upstream specs" must be measurable. The manifest prevents easy upstream
+  cases from masking unported hard groups.
+- Regex parity cannot be delegated to regexp2. The plan now requires a dedicated
+  server-compatible validator plus an accepted/rejected matrix.
 - SOLID in this repo should mean cohesive Go package responsibilities and a
   small public root API. It should not mean adding broad interfaces or a Ruby-like
   class structure.
