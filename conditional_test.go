@@ -77,6 +77,77 @@ func TestEvaluateBuildEnvReturnsNullForMissingVariables(t *testing.T) {
 	}
 }
 
+func TestEvaluateDerivesSupportedBuildkiteEnv(t *testing.T) {
+	branch := "main"
+	tag := "v1.2.3"
+	message := "ship it"
+	commit := "abc123"
+	pipelineSlug := "deploy"
+	pipelineID := "018f"
+	repository := "git@github.com:acme/repo.git"
+	organizationSlug := "acme"
+	pullRequestID := "123"
+	pullRequestBaseBranch := "main"
+	mergeQueueBaseBranch := "main"
+	mergeQueueBaseCommit := "def456"
+
+	got, err := Evaluate(`build.env("BUILDKITE_BRANCH") == "main" &&
+		build.env("BUILDKITE_TAG") == "v1.2.3" &&
+		env("BUILDKITE_MESSAGE") == "ship it" &&
+		build.env("BUILDKITE_COMMIT") == "abc123" &&
+		build.env("BUILDKITE_PIPELINE_SLUG") == "deploy" &&
+		build.env("BUILDKITE_PIPELINE_ID") == "018f" &&
+		build.env("BUILDKITE_REPO") == "git@github.com:acme/repo.git" &&
+		build.env("BUILDKITE_ORGANIZATION_SLUG") == "acme" &&
+		build.env("BUILDKITE_PULL_REQUEST") == "123" &&
+		build.env("BUILDKITE_PULL_REQUEST_BASE_BRANCH") == "main" &&
+		build.env("BUILDKITE_PULL_REQUEST_REPO") == "git@github.com:acme/repo.git" &&
+		build.env("BUILDKITE_PULL_REQUEST_LABELS") == "bug,deploy" &&
+		build.env("BUILDKITE_MERGE_QUEUE_BASE_BRANCH") == "main" &&
+		build.env("BUILDKITE_MERGE_QUEUE_BASE_COMMIT") == "def456"`, Context{
+		EntryPoint: EntryPointBuildCondition,
+		Build: Build{
+			Branch:      &branch,
+			Tag:         &tag,
+			Message:     &message,
+			Commit:      &commit,
+			PullRequest: PullRequest{ID: &pullRequestID, BaseBranch: &pullRequestBaseBranch, Repository: &repository, Labels: []string{"bug", "deploy"}},
+			MergeQueue:  MergeQueue{BaseBranch: &mergeQueueBaseBranch, BaseCommit: &mergeQueueBaseCommit},
+		},
+		Pipeline:     Pipeline{Slug: &pipelineSlug, ID: &pipelineID, Repository: &repository},
+		Organization: Organization{Slug: &organizationSlug},
+	})
+	if err != nil {
+		t.Fatalf("Evaluate returned error: %v", err)
+	}
+	if !got {
+		t.Fatalf("Evaluate returned false, want true")
+	}
+}
+
+func TestEvaluateFiltersUnsupportedBuildkiteEnv(t *testing.T) {
+	_, err := Evaluate(`build.env("BUILDKITE_AGENT_ACCESS_TOKEN") == null`, Context{
+		EntryPoint: EntryPointBuildCondition,
+	})
+	if !IsErrorKind(err, ErrorKindValidation) {
+		t.Fatalf("Evaluate error = %v, want %s", err, ErrorKindValidation)
+	}
+
+	got, err := Evaluate(`build.env(env("SECRET_NAME")) == null && env(env("SECRET_NAME")) == ""`, Context{
+		EntryPoint: EntryPointBuildCondition,
+		BuildEnv: map[string]string{
+			"SECRET_NAME":                  "BUILDKITE_AGENT_ACCESS_TOKEN",
+			"BUILDKITE_AGENT_ACCESS_TOKEN": "secret",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Evaluate returned error: %v", err)
+	}
+	if !got {
+		t.Fatalf("Evaluate returned false, want true")
+	}
+}
+
 func TestEvaluatePullRequestRepositoryAndFork(t *testing.T) {
 	repository := "git@github.com:acme/repo.git"
 	fork := true
@@ -167,6 +238,16 @@ func TestNotificationEntryPointFailsClosed(t *testing.T) {
 	}
 	if got {
 		t.Fatalf("Evaluate returned true for unavailable step variable, want false")
+	}
+}
+
+func TestNotificationEntryPointAllowsBlankCondition(t *testing.T) {
+	got, err := Evaluate(` `, Context{EntryPoint: EntryPointBuildNotification})
+	if err != nil {
+		t.Fatalf("Evaluate returned error: %v", err)
+	}
+	if !got {
+		t.Fatalf("Evaluate returned false, want true")
 	}
 }
 

@@ -36,6 +36,10 @@ func Evaluate(expression string, ctx Context) (bool, error) {
 	}
 	ctx.EntryPoint = entryPoint
 
+	if strings.TrimSpace(expression) == "" && isNotificationEntryPoint(entryPoint) {
+		return true, nil
+	}
+
 	result, err := evaluate(expression, ctx)
 	if err != nil && isNotificationEntryPoint(entryPoint) {
 		return false, nil
@@ -88,6 +92,43 @@ func validateExpression(expr ast.Expression, entryPoint EntryPoint) error {
 			Message: fmt.Sprintf("step variables are not available for entry point %q", entryPoint),
 		}
 	}
+	if err := validateEnvCalls(expr); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateEnvCalls(expr ast.Expression) error {
+	switch expr := expr.(type) {
+	case *ast.PrefixExpression:
+		return validateEnvCalls(expr.Right)
+	case *ast.InfixExpression:
+		if err := validateEnvCalls(expr.Left); err != nil {
+			return err
+		}
+		return validateEnvCalls(expr.Right)
+	case *ast.CallExpression:
+		if (expr.Function == "env" || expr.Function == "build.env") && len(expr.Arguments) == 1 {
+			if arg, ok := expr.Arguments[0].(*ast.StringLiteral); ok && unsupportedBuildkiteEnv(arg.Value) {
+				return &Error{
+					Kind:    ErrorKindValidation,
+					Message: fmt.Sprintf("%q is not a supported Buildkite environment variable", arg.Value),
+				}
+			}
+		}
+		for _, arg := range expr.Arguments {
+			if err := validateEnvCalls(arg); err != nil {
+				return err
+			}
+		}
+	case *ast.ArrayLiteral:
+		for _, element := range expr.Elements {
+			if err := validateEnvCalls(element); err != nil {
+				return err
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -371,15 +412,121 @@ func pullRequestLabel(ctx Context) *string {
 	return ctx.Build.PullRequest.Label
 }
 
+var supportedBuildkiteEnv = map[string]struct{}{
+	"BUILDKITE_BRANCH":                               {},
+	"BUILDKITE_TAG":                                  {},
+	"BUILDKITE_MESSAGE":                              {},
+	"BUILDKITE_COMMIT":                               {},
+	"BUILDKITE_PIPELINE_SLUG":                        {},
+	"BUILDKITE_PIPELINE_NAME":                        {},
+	"BUILDKITE_PIPELINE_ID":                          {},
+	"BUILDKITE_ORGANIZATION_SLUG":                    {},
+	"BUILDKITE_TRIGGERED_FROM_BUILD_ID":              {},
+	"BUILDKITE_TRIGGERED_FROM_BUILD_NUMBER":          {},
+	"BUILDKITE_TRIGGERED_FROM_BUILD_PIPELINE_SLUG":   {},
+	"BUILDKITE_TRIGGERED_FROM_BUILD_JOB_ID":          {},
+	"BUILDKITE_REBUILT_FROM_BUILD_ID":                {},
+	"BUILDKITE_REBUILT_FROM_BUILD_NUMBER":            {},
+	"BUILDKITE_REPO":                                 {},
+	"BUILDKITE_PULL_REQUEST":                         {},
+	"BUILDKITE_PULL_REQUEST_BASE_BRANCH":             {},
+	"BUILDKITE_PULL_REQUEST_REPO":                    {},
+	"BUILDKITE_PULL_REQUEST_LABELS":                  {},
+	"BUILDKITE_PULL_REQUEST_USING_MERGE_REFSPEC":     {},
+	"BUILDKITE_MERGE_QUEUE_BASE_BRANCH":              {},
+	"BUILDKITE_MERGE_QUEUE_BASE_COMMIT":              {},
+	"BUILDKITE_GIT_DIFF_BASE":                        {},
+	"BUILDKITE_GITHUB_ACTION":                        {},
+	"BUILDKITE_GITHUB_COMMENT_ID":                    {},
+	"BUILDKITE_GITHUB_DEPLOYMENT_ID":                 {},
+	"BUILDKITE_GITHUB_DEPLOYMENT_TASK":               {},
+	"BUILDKITE_GITHUB_DEPLOYMENT_ENVIRONMENT":        {},
+	"BUILDKITE_GITHUB_DEPLOYMENT_PAYLOAD":            {},
+	"BUILDKITE_GITHUB_EVENT":                         {},
+	"BUILDKITE_GITHUB_REVIEW_ID":                     {},
+	"BUILDKITE_GITHUB_CHECK_RUN_CONCLUSION":          {},
+	"BUILDKITE_GITHUB_CHECK_RUN_NAME":                {},
+	"BUILDKITE_GITHUB_DEPLOYMENT_STATUS_ENVIRONMENT": {},
+	"BUILDKITE_GITHUB_DEPLOYMENT_STATUS_STATE":       {},
+	"BUILDKITE_GITHUB_RELEASE_DRAFT":                 {},
+	"BUILDKITE_GITHUB_RELEASE_PRERELEASE":            {},
+	"BUILDKITE_GITHUB_RELEASE_TAG":                   {},
+	"BUILDKITE_GITHUB_REVIEW_STATE":                  {},
+}
+
 func mergedEnv(ctx Context) map[string]string {
-	env := make(map[string]string, len(ctx.ProjectEnv)+len(ctx.BuildEnv))
-	for key, value := range ctx.ProjectEnv {
-		env[key] = value
-	}
-	for key, value := range ctx.BuildEnv {
+	env := make(map[string]string, len(ctx.ProjectEnv)+len(ctx.BuildEnv)+len(supportedBuildkiteEnv))
+	mergeUserEnv(env, ctx.ProjectEnv)
+	mergeUserEnv(env, ctx.BuildEnv)
+	for key, value := range builtinEnv(ctx) {
 		env[key] = value
 	}
 	return env
+}
+
+func mergeUserEnv(env map[string]string, values map[string]string) {
+	for key, value := range values {
+		if unsupportedBuildkiteEnv(key) {
+			continue
+		}
+		env[key] = value
+	}
+}
+
+func unsupportedBuildkiteEnv(key string) bool {
+	if !strings.HasPrefix(key, "BUILDKITE_") {
+		return false
+	}
+	_, ok := supportedBuildkiteEnv[key]
+	return !ok
+}
+
+func builtinEnv(ctx Context) map[string]string {
+	env := map[string]string{}
+
+	setString(env, "BUILDKITE_BRANCH", ctx.Build.Branch)
+	setString(env, "BUILDKITE_TAG", ctx.Build.Tag)
+	if ctx.Build.Tag == nil {
+		env["BUILDKITE_TAG"] = ""
+	}
+	setString(env, "BUILDKITE_MESSAGE", ctx.Build.Message)
+	if ctx.Build.Message == nil {
+		env["BUILDKITE_MESSAGE"] = ""
+	}
+	setString(env, "BUILDKITE_COMMIT", ctx.Build.Commit)
+	setString(env, "BUILDKITE_REPO", ctx.Pipeline.Repository)
+	setString(env, "BUILDKITE_PIPELINE_SLUG", ctx.Pipeline.Slug)
+	setString(env, "BUILDKITE_PIPELINE_ID", ctx.Pipeline.ID)
+	setString(env, "BUILDKITE_ORGANIZATION_SLUG", ctx.Organization.Slug)
+
+	if ctx.Build.PullRequest.ID == nil || *ctx.Build.PullRequest.ID == "" {
+		env["BUILDKITE_PULL_REQUEST"] = "false"
+	} else {
+		env["BUILDKITE_PULL_REQUEST"] = *ctx.Build.PullRequest.ID
+	}
+	setStringOrBlank(env, "BUILDKITE_PULL_REQUEST_BASE_BRANCH", ctx.Build.PullRequest.BaseBranch)
+	setStringOrBlank(env, "BUILDKITE_PULL_REQUEST_REPO", ctx.Build.PullRequest.Repository)
+	if ctx.Build.PullRequest.Labels != nil {
+		env["BUILDKITE_PULL_REQUEST_LABELS"] = strings.Join(ctx.Build.PullRequest.Labels, ",")
+	}
+	setStringOrBlank(env, "BUILDKITE_MERGE_QUEUE_BASE_BRANCH", ctx.Build.MergeQueue.BaseBranch)
+	setStringOrBlank(env, "BUILDKITE_MERGE_QUEUE_BASE_COMMIT", ctx.Build.MergeQueue.BaseCommit)
+
+	return env
+}
+
+func setString(env map[string]string, key string, value *string) {
+	if value != nil {
+		env[key] = *value
+	}
+}
+
+func setStringOrBlank(env map[string]string, key string, value *string) {
+	if value == nil {
+		env[key] = ""
+		return
+	}
+	env[key] = *value
 }
 
 func normalizeEntryPoint(entryPoint EntryPoint) (EntryPoint, error) {
