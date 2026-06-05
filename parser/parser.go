@@ -231,6 +231,8 @@ func (p *Parser) parseRegexp() ast.Expression {
 		p.errors = append(p.errors, msg)
 		return nil
 	}
+	// regexp2 is intentionally used for Buildkite server-side syntax parity.
+	// It can backtrack, so keep matching bounded.
 	r.MatchTimeout = regexpMatchTimeout
 
 	ar.Regexp = r
@@ -240,10 +242,52 @@ func (p *Parser) parseRegexp() ast.Expression {
 func regexpPattern(literal string) string {
 	// Buildkite docs require escaping $ anchors before conditional evaluation
 	// to avoid environment substitution. Keep literal dollar escapes intact.
-	if strings.HasSuffix(literal, `\$`) {
-		return strings.TrimSuffix(literal, `\$`) + "$"
+	var out strings.Builder
+	out.Grow(len(literal))
+
+	for i := 0; i < len(literal); i++ {
+		if literal[i] == '\\' && i+1 < len(literal) && literal[i+1] == '$' && escapedDollarLooksLikeAnchor(literal, i) {
+			out.WriteByte('$')
+			i++
+			continue
+		}
+
+		out.WriteByte(literal[i])
 	}
-	return literal
+
+	return out.String()
+}
+
+func escapedDollarLooksLikeAnchor(literal string, backslashIndex int) bool {
+	if backslashIndex == 0 {
+		return false
+	}
+
+	previous := literal[backslashIndex-1]
+	if previous == '\\' || isASCIISpace(previous) {
+		return false
+	}
+
+	nextIndex := backslashIndex + 2
+	if nextIndex == len(literal) {
+		return true
+	}
+
+	switch literal[nextIndex] {
+	case '|', ')':
+		return true
+	default:
+		return false
+	}
+}
+
+func isASCIISpace(ch byte) bool {
+	switch ch {
+	case ' ', '\t', '\n', '\r', '\f', '\v':
+		return true
+	default:
+		return false
+	}
 }
 
 func regexpOptions(flags string) (regexp2.RegexOptions, error) {

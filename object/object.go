@@ -63,9 +63,12 @@ type Regexp struct {
 	Flags string
 }
 
-func (r *Regexp) Type() ObjectType     { return REGEXP_OBJ }
-func (r *Regexp) String() string       { return r.Regexp.String() }
-func (r *Regexp) Equals(o Object) bool { return r.String() == o.String() }
+func (r *Regexp) Type() ObjectType { return REGEXP_OBJ }
+func (r *Regexp) String() string   { return fmt.Sprintf("/%s/%s", r.Regexp.String(), r.Flags) }
+func (r *Regexp) Equals(o Object) bool {
+	other, ok := o.(*Regexp)
+	return ok && r.Regexp.String() == other.Regexp.String() && r.Flags == other.Flags
+}
 
 type Null struct{}
 

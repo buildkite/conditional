@@ -108,6 +108,9 @@ func TestRegexpPatternEscapedDollar(t *testing.T) {
 	}{
 		{`release-123\$`, `release-123$`},
 		{`^v[0-9]+\.0\$`, `^v[0-9]+\.0$`},
+		{`^(main\$|release\/.*\$)`, `^(main$|release\/.*$)`},
+		{`\$`, `\$`},
+		{`price \$`, `price \$`},
 		{`price \$[0-9]+`, `price \$[0-9]+`},
 	}
 
