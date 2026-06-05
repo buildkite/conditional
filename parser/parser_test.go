@@ -71,6 +71,33 @@ func TestRegexpExpression(t *testing.T) {
 	}
 }
 
+func TestRegexpFlagsExpression(t *testing.T) {
+	input := `/\[skip tests\]/i`
+
+	l := lexer.New(input)
+	p := New(l)
+	expr := p.Parse()
+	checkParserErrors(t, p)
+
+	literal, ok := expr.(*ast.Regexp)
+	if !ok {
+		t.Fatalf("exp not *ast.Regexp. got=%T", expr)
+	}
+	if literal.Flags != "i" {
+		t.Errorf("regexp.Flags not %q. got=%q", "i", literal.Flags)
+	}
+}
+
+func TestRegexpUnsupportedFlags(t *testing.T) {
+	l := lexer.New(`/skip/x`)
+	p := New(l)
+	p.Parse()
+
+	if len(p.Errors()) == 0 {
+		t.Fatalf("expected parser errors")
+	}
+}
+
 func TestParsingPrefixExpressions(t *testing.T) {
 	prefixTests := []struct {
 		input    string
@@ -354,7 +381,7 @@ func TestParsingContainsOperators(t *testing.T) {
 func TestParserRejectsTrailingTokens(t *testing.T) {
 	tests := []string{
 		`build.creator.teams "deploy"`,
-		`build.message !~ /\[skip tests\]/i`,
+		`build.message !~ /\[skip tests\]/ extra`,
 	}
 
 	for _, input := range tests {

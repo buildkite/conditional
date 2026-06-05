@@ -3,10 +3,10 @@ package ast
 import (
 	"bytes"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/buildkite/conditional/token"
+	"github.com/dlclark/regexp2"
 )
 
 // The base Node interface
@@ -69,14 +69,15 @@ func (sl *StringLiteral) String() string {
 }
 
 type Regexp struct {
-	*regexp.Regexp
+	*regexp2.Regexp
 	Token token.Token
+	Flags string
 }
 
 func (r *Regexp) expressionNode()      {}
 func (r *Regexp) TokenLiteral() string { return r.Token.Literal }
 func (r *Regexp) String() string {
-	return fmt.Sprintf("/%s/", r.Token.Literal)
+	return fmt.Sprintf("/%s/%s", r.Token.Literal, r.Flags)
 }
 
 type PrefixExpression struct {
