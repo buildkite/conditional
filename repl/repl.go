@@ -2,10 +2,8 @@ package repl
 
 import (
 	"bufio"
-	"fmt"
 	"io"
 	"os"
-	"strings"
 
 	"github.com/buildkite/conditional/evaluator"
 	"github.com/buildkite/conditional/lexer"
@@ -17,22 +15,12 @@ const PROMPT = ">> "
 
 func Start(in io.Reader, out io.Writer) {
 	scanner := bufio.NewScanner(in)
-	env := object.NewEnvironment()
-
-	envStruct := &object.Struct{
-		Props: map[string]object.Object{},
+	env := object.Struct{
+		"env": object.Function(envFunction),
 	}
-
-	// add system environment to an env struct
-	for _, e := range os.Environ() {
-		parts := strings.SplitN(e, "=", 2)
-		envStruct.Props[parts[0]] = &object.String{Value: parts[1]}
-	}
-
-	env.Set(`env`, envStruct)
 
 	for {
-		fmt.Printf(PROMPT)
+		io.WriteString(out, PROMPT)
 		scanned := scanner.Scan()
 		if !scanned {
 			return
@@ -62,6 +50,24 @@ func Start(in io.Reader, out io.Writer) {
 		}
 
 	}
+}
+
+func envFunction(args []object.Object) object.Object {
+	if len(args) != 1 {
+		return &object.Error{Message: "env expects exactly one argument"}
+	}
+
+	name, ok := args[0].(*object.String)
+	if !ok {
+		return &object.Error{Message: "env argument must be a string"}
+	}
+
+	value, ok := os.LookupEnv(name.Value)
+	if !ok {
+		return evaluator.NULL
+	}
+
+	return &object.String{Value: value}
 }
 
 func printParserErrors(out io.Writer, errors []string) {

@@ -76,7 +76,7 @@ func Eval(node ast.Node, scope Scope) object.Object {
 
 		obj, ok := scope.Get(node.Function)
 		if !ok {
-			return newError("function not defined: " + node.Function)
+			return newError("function not defined: %s", node.Function)
 		}
 
 		return applyFunction(obj, args)
@@ -243,7 +243,7 @@ func evalArrayInfixExpression(operator string, left, right object.Object) object
 	case "@>":
 		contains, err := arrayContains(leftVal, right)
 		if err != nil {
-			return newError(err.Error())
+			return newError("%s", err.Error())
 		}
 		return nativeBoolToBooleanObject(contains)
 	default:
@@ -276,7 +276,7 @@ func evalIdentifier(node *ast.Identifier, scope Scope) object.Object {
 
 	val, ok := scope.Get(node.Value)
 	if !ok {
-		return newError("identifier not found: " + node.Value)
+		return newError("identifier not found: %s", node.Value)
 	}
 
 	return val

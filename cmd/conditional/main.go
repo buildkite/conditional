@@ -8,6 +8,6 @@ import (
 )
 
 func main() {
-	fmt.Printf("Buildkite condition evaluator\n")
+	fmt.Println("Buildkite condition evaluator")
 	repl.Start(os.Stdin, os.Stdout)
 }
