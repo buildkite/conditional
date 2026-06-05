@@ -10,12 +10,18 @@ spec_refs:
 ## Summary
 
 This plan brings `buildkite/conditional` to exact parity with the server-side
-conditional language documented in Buildkite's conditionals guide. The current
-repository is now a modern Go module with `mise` tasks, CI wiring, core boolean
-syntax, `null`, `includes`, short-circuiting logical operators, and regexp2-based
-regular expressions. The remaining work is less about adding isolated operators
-and more about making the evaluator behave like Buildkite in the contexts where
-Buildkite evaluates conditionals.
+Buildkite conditional language. The public docs remain the user-facing contract,
+but the implementation contract is the server grammar, type checker, evaluator,
+regular-expression validator, Buildkite context builder, and upstream specs in
+`buildkite/buildkite`.
+
+The current repository is now a modern Go module with `mise` tasks, CI wiring,
+core boolean syntax, `null`, `includes`, short-circuiting logical operators, and
+regexp2-based regular expressions. The remaining work is not just adding
+operators. The library needs to become a polished Go package whose public API
+evaluates Buildkite conditionals exactly as the server does, and whose internal
+parser/evaluator packages are clean implementation details rather than a second
+language with compatible-looking syntax.
 
 The target outcome is a small, well-tested library that can answer the same
 question as Buildkite: given a conditional expression, a Buildkite evaluation
@@ -24,18 +30,18 @@ expression evaluate to `true`, `false`, or a fail-closed error?
 
 The hard part is parity evidence. The public docs list syntax, variables, and
 examples, but some semantics are only observable from the server evaluator:
-missing values, context-specific variables, type mismatches, function receiver
-behavior, and the boundary between YAML/environment interpolation and regex
-parsing. The upstream `buildkite/buildkite` repo already has RSpec coverage for
-much of this behavior. This plan therefore treats ported table-driven Go
-conformance tests and an optional server oracle as first-class deliverables, not
-test polish after implementation.
+missing values, context-specific variables, type mismatches, dotted identifier
+behavior, shell-style environment substitution, and server-rejected regular
+expression features. The upstream `buildkite/buildkite` repo already has RSpec
+coverage for much of this behavior. This plan therefore treats ported
+table-driven Go conformance tests and an optional server oracle as first-class
+deliverables, not test polish after implementation.
 
 ## Problem
 
 The library currently evaluates a generic expression language with a generic
-`object.Struct` scope. That is useful, but it is not yet the same thing as the
-server-side Buildkite conditional evaluator described by the docs.
+`object.Struct` scope. That is useful scaffolding, but it is not the same thing
+as the server-side Buildkite conditional evaluator.
 
 The current repo can parse and evaluate many documented examples:
 
@@ -46,11 +52,16 @@ The current repo can parse and evaluate many documented examples:
 - Regex literals, escaped `/`, `i` flags, RE2 compatibility mode, and bounded
   regexp2 matching.
 
-The gaps are now mostly semantic:
+Some of that current behavior is a useful foundation; some is divergent from
+the server and should be removed from the Buildkite surface. The important gaps
+are:
 
-- The docs expose `build.env("NAME")`, but the evaluator only supports top-level
-  function calls. `build.env("NAME")` parses as a dotted call and currently fails
-  during evaluation.
+- The server grammar treats dotted names as flat identifiers. `build.env` is a
+  function name and `build.branch` is an assigned variable name. The local
+  object-lookup model is not enough for exact parity.
+- The server parser supports ternary expressions and shell-style environment
+  substitution forms such as `$branch`, `${branch:-fallback}`, and substring
+  operations. Those are currently missing locally.
 - The docs define many variables under `build`, `pipeline`, `organization`, and
   notification-only `step`, but this repo has no Buildkite-specific context
   builder or availability rules.
@@ -60,12 +71,14 @@ The gaps are now mostly semantic:
 - Missing documented nullable values need Buildkite-compatible behavior. Today a
   missing property is an error, while many documented variables should be `null`
   in specific contexts.
-- The library has no stable public "parse and evaluate to bool" API that
-  consistently handles parser errors, evaluator errors, and non-boolean results.
-- The documentation around regex `$` escaping is tied to Buildkite interpolation.
-  The evaluator now preserves regex semantics, where raw `$` is an anchor and
-  `\$` is a literal dollar. Exact server parity still needs tests that prove the
-  string seen by the server evaluator after interpolation.
+- The library has no stable root package API that consistently handles parser
+  errors, evaluator errors, validation errors, and non-boolean final results.
+- The local regex engine currently accepts some syntax the server rejects. Exact
+  parity requires the Go library to reject server-rejected regex features even
+  when regexp2 can evaluate them.
+- The existing `@>` operator and any other non-server syntax should be removed
+  from the Buildkite language surface instead of preserved as compatibility
+  extensions.
 - There is no local server-derived conformance corpus yet. The upstream
   `buildkite/buildkite` specs should be ported before inventing bespoke edge
   cases, otherwise each PR risks matching the docs examples but drifting from
@@ -73,18 +86,21 @@ The gaps are now mostly semantic:
 
 ## Goals
 
-- Match the documented conditional syntax from the Buildkite docs.
-- Match documented variable availability and values for every conditional
-  context the docs describe.
-- Make `build.env()` work with the documented environment variable allowlist and
-  custom environment variables when the caller provides them.
+- Match the server-side Buildkite conditional grammar, including syntax that is
+  covered by upstream server specs but not emphasized in the public docs.
+- Match variable availability, type checking, enum validation, nullable values,
+  and evaluation behavior for every server context this library supports.
+- Make `env()` and `build.env()` work with server-compatible validation and
+  return semantics.
 - Preserve fail-closed behavior: parse errors, unsupported syntax, unsupported
   flags, non-boolean final values, and context-ineligible variables must not
   silently evaluate to `true`.
 - Add durable table-driven conformance tests that include every docs example
-  plus upstream Buildkite server cases that can be ported cleanly.
-- Keep the library useful as a generic evaluator while adding Buildkite-specific
-  helpers behind an explicit package or API boundary.
+  plus upstream Buildkite server cases.
+- Publish a small, idiomatic root Go package API for validation and evaluation.
+- Keep implementation packages cohesive and testable, with clear
+  single-responsibility boundaries and small interfaces only at consuming
+  boundaries.
 - Keep CI simple: `mise run check` should remain the default validation path.
 
 ## Non-Goals
@@ -93,28 +109,25 @@ The gaps are now mostly semantic:
   dynamic pipeline uploads, branch filtering, or dependency behavior. The docs
   discuss those topics, but this repo should own expression parsing and
   evaluation, not pipeline scheduling.
-- Do not implement Buildkite YAML parsing as the default expression evaluator.
-  If interpolation support is needed, expose it as an explicit input mode or
-  helper so raw expression evaluation keeps normal regex semantics.
+- Do not implement Buildkite pipeline YAML parsing. The conditional parser
+  should implement the server conditional grammar, including the shell-style
+  substitution syntax that grammar accepts, but it should not become a YAML
+  loader.
 - Do not make live Buildkite API calls in default unit tests. Server oracle tests
   should be optional and clearly separated from deterministic local tests.
-- Do not remove the legacy `@>` operator immediately. It is not in the current
-  docs, but existing users may rely on it. Treat it as a documented compatibility
-  extension and keep its tests.
+- Do not preserve divergent syntax for compatibility in the Buildkite evaluator.
+  If a feature is not accepted by the server-side conditional language, remove
+  it or keep it behind a clearly separate non-Buildkite internal test path until
+  it can be deleted.
 
 ## Target Model
 
-Add a Buildkite-specific evaluation layer over the existing lexer, parser,
-evaluator, and object packages.
+Make the module root, `github.com/buildkite/conditional`, the polished public
+library surface. The root package should expose the Buildkite contract in terms
+callers care about: validate this conditional, evaluate it in this Buildkite
+context, and receive a boolean or a typed error.
 
-The core expression packages should stay mostly generic:
-
-- `lexer` tokenizes expression strings.
-- `parser` parses tokens into AST nodes.
-- `evaluator` evaluates an AST with a `Scope`.
-- `object` represents runtime values.
-
-Add a package or top-level API that makes Buildkite context explicit:
+Recommended public shape:
 
 ```go
 type ContextKind string
@@ -135,17 +148,66 @@ type BuildkiteContext struct {
 	Env          map[string]string
 }
 
-func EvaluateBuildkite(expression string, ctx BuildkiteContext) (bool, error)
+func Validate(expression string, ctx BuildkiteContext) error
+func Evaluate(expression string, ctx BuildkiteContext) (bool, error)
 ```
 
-The API should do three things that callers should not have to remember:
+The API should do the server work callers should not have to remember:
 
-- Build the documented variable scope for the selected context.
-- Wire documented functions, especially `build.env()`.
-- Enforce that the final result is a boolean.
+- Parse the server grammar, including comments, ternaries, regex literals,
+  flat dotted identifiers, and shell-style environment substitutions.
+- Type-check the expression against the selected Buildkite context.
+- Build the server-compatible assignment table for documented variables and
+  functions.
+- Evaluate to a final boolean and fail closed for every parser, validation,
+  evaluation, regex, and non-boolean result error.
 
-Keep raw evaluator access for existing generic callers. The Buildkite-specific
-API is the parity surface.
+Implementation packages should have clear responsibilities:
+
+- `lexer` tokenizes the server grammar.
+- `parser` parses tokens into AST nodes and preserves source positions.
+- `ast` models syntax, not evaluation policy.
+- `evaluator` evaluates a type-checked AST against a server-style context.
+- `object` or its replacement represents runtime values and type information.
+- A Buildkite context package owns variable/function assignment construction,
+  enum definitions, and context availability.
+
+Codebase cleanup should push toward idiomatic Go package boundaries:
+
+- Prefer concrete types in the public API. Introduce interfaces only where a
+  consumer needs substitution, such as an optional server-oracle checker.
+- Keep parser, evaluator, regex validation, context construction, and
+  environment substitution as separate reasons to change.
+- Move implementation-only packages under `internal/` if this repo can make a
+  breaking API cleanup; otherwise keep them documented as unstable internals and
+  make the root package the only supported library API.
+- Remove or isolate any generic-language behavior that conflicts with the
+  server grammar.
+
+## Server Sources To Match
+
+Treat these upstream files as the parity contract when they differ from local
+behavior:
+
+- `buildkite/buildkite:app/models/conditional/grammar.kpeg`
+  defines parser syntax. Important implications: dotted variable and function
+  names are flat identifiers; `build.env("NAME")` is a function named
+  `build.env`, not a method call through an object receiver; ternary `? :` and
+  shell-style environment substitutions are server grammar.
+- `buildkite/buildkite:app/models/conditional/regexp.rb`
+  defines accepted regex flags and rejected regex features. The Go
+  implementation may use regexp2, but it must reject syntax the server rejects.
+- `buildkite/buildkite:app/models/conditional/type_check_visitor.rb`,
+  `evaluation_visitor.rb`, `variable.rb`, `function.rb`, `enum.rb`, and
+  `context.rb` define type checking, evaluation, functions, enums, nullable
+  values, and assignment lookup.
+- `buildkite/buildkite:app/models/build/condition.rb`
+  defines the Buildkite assignment table, `env()` versus `build.env()`,
+  Buildkite enum values, context construction, and nullable build data.
+- The upstream specs under `spec/models/conditional`,
+  `spec/models/build/condition_spec.rb`, notification specs, and
+  `spec/validators/build_condition_validator_spec.rb` are the primary source of
+  conformance cases to port.
 
 ## Current State
 
@@ -167,23 +229,29 @@ API is the parity surface.
 - Parser rejects trailing tokens after a complete expression.
 - Lexer handles unterminated regex literals without panicking.
 - README documents the current regex interpolation boundary.
+- Some landed behavior is now explicitly provisional because it diverges from
+  the server grammar or server regex validator.
 
 ### Known Gaps
 
 | Area | Current Behavior | Required Direction |
 | --- | --- | --- |
-| `build.env()` | Only top-level calls evaluate cleanly. Dotted calls fail because `.` expects an identifier on the right. | Support Buildkite method-style calls for documented receivers, starting with `build.env("NAME")`. |
-| Scope | Callers pass arbitrary `object.Struct`. | Add Buildkite context builders with documented variables and context availability. |
+| Dotted names | Local parsing/evaluation leans on nested object lookup. | Match the server grammar's flat dotted identifiers for variables and functions. |
+| `build.env()` | Only top-level calls evaluate cleanly. `build.env("NAME")` currently fails during evaluation. | Treat `build.env` as a flat function identifier with server-compatible nullable return behavior. |
+| Ternary syntax | Not implemented. | Implement server ternary `condition ? true_value : false_value` precedence and type checking. |
+| Shell substitution | Not implemented. | Implement server grammar for `$name`, `${name}`, default/alternate/error forms, and substring forms. |
+| Scope | Callers pass arbitrary `object.Struct`. | Add server-style Buildkite assignment tables with documented variables and context availability. |
 | Nullable values | Missing nested properties error. | Documented nullable variables should be present as `null` for the right contexts. Truly unknown properties should still fail closed. |
 | Context restrictions | No context kind. | Enforce pipeline, step, build-notification, and step-notification variable availability. |
 | Final result | `Eval` returns any `object.Object`. Tests often ignore parser errors. | Public Buildkite evaluation should return `(bool, error)` and treat non-boolean results as errors. |
-| Regex `$` interpolation | Raw evaluator preserves regex semantics. | Add table-driven tests for raw evaluator input and, if needed, a separate interpolation-aware entry point for YAML/upload strings. |
+| Regex syntax | regexp2 accepts some features the server rejects. | Keep regexp2 only with a server-compatible validator for flags and unsupported constructs. |
+| Divergent operators | `@>` exists locally but is not server syntax. | Remove it from the Buildkite language and tests. |
 | Type mismatch semantics | Local behavior exists but is not server-proven. | Build a server-derived matrix for equality, regex matching, `includes`, `!`, missing values, and function argument errors. |
-| Conformance | Unit tests cover selected docs examples. | Add table-driven conformance tests that can be run locally and optionally compared with a server oracle. |
+| Conformance | Unit tests cover selected docs examples. | Add idiomatic table-driven Go conformance tests that can be run locally and optionally compared with a server oracle. |
 
-## Buildkite Docs Surface To Cover
+## Server Syntax And Context Surface To Cover
 
-The current docs define these expression features:
+The public docs define these expression features, and they must all be covered:
 
 - Comparators: `==`, `!=`, `=~`, `!~`.
 - Logical operators: `||`, `&&`.
@@ -194,7 +262,24 @@ The current docs define these expression features:
   in pipeline YAML to avoid interpolation.
 - `//` comments.
 
-The docs also define context and variable surface:
+The upstream server grammar and specs add syntax that is also in scope for exact
+server parity:
+
+- Ternary expressions: `condition ? true_value : false_value`.
+- Dotted variable identifiers as flat assignment names, such as `build.branch`,
+  `pipeline.slug`, and `organization.slug`.
+- Dotted function identifiers as flat function names, such as `build.env`.
+- Shell-style environment substitution in expressions and double-quoted strings:
+  `$name`, `${name}`, `${name?}`, `${name:?}`, `${name-default}`,
+  `${name:-default}`, `${name+alternate}`, `${name:+alternate}`, and substring
+  forms such as `${name:1:2}`.
+- Server string escape behavior for single-quoted strings, double-quoted
+  strings, and substitution fallback strings.
+- Server type checking for strings, numbers, booleans, arrays, nulls, regexes,
+  typed variables, functions, and enums.
+
+The docs and upstream `Build::Condition` context define this variable and
+function surface:
 
 - Common build variables: author, branch, commit, creator, id, message, number,
   pull request data, merge queue data, source, source event/action, state, tag.
@@ -211,18 +296,59 @@ The plan should not assume all variables are valid in all contexts. The docs
 explicitly call out context-specific behavior, such as `build.state` for
 notification-level conditionals and `step.*` for step notifications.
 
+## Go Design Constraints
+
+The final codebase should be a small Go library, not a transliteration of the
+Ruby object model. Apply SOLID principles in idiomatic Go terms:
+
+- Single responsibility: lexer, parser, regex validation, type checking,
+  evaluation, environment substitution, and Buildkite context construction each
+  get one reason to change.
+- Open/closed: add new server variables, functions, and enum values through
+  explicit assignment/type definitions and conformance tests, not by widening
+  the evaluator to accept arbitrary unknown names.
+- Liskov/interface substitution: avoid broad exported interfaces. Where
+  substitution matters, such as an optional server oracle, define the smallest
+  consumer-owned interface.
+- Interface segregation: public callers should not need lexer/parser/evaluator
+  internals to evaluate a conditional.
+- Dependency inversion: the public evaluator depends on a Buildkite context
+  contract; optional live server checks depend on an oracle interface, not on
+  hard-coded network calls in unit tests.
+
+Additional Go constraints:
+
+- Exported identifiers in the root package need doc comments and stable error
+  behavior.
+- Error tests should use typed errors or error categories, plus source location
+  where meaningful. Do not couple the Go suite to every word of a Ruby error
+  unless exact message parity becomes a requirement.
+- Test helper packages should stay small. Prefer local helper functions with
+  `t.Helper()` over a custom testing framework.
+- Do not introduce abstractions just to mirror Ruby classes. Add them only when
+  they remove real duplication or protect the public API from implementation
+  churn.
+
 ## Delivery Strategy
 
-### Slice 1: Table-Driven Conformance Tests
+### Slice 1: Idiomatic Go Conformance Test Suite
 
-Create table-driven Go conformance tests before more feature work. Keep the
-test data in code so it is easy to read, refactor, and debug with normal Go test
-output. Do not add YAML files as test data.
+Create the test shape before more feature work. Keep the test data in Go code so
+cases are easy to read, refactor, and debug with normal `go test` output. Do not
+add YAML files as test data.
 
 Proposed files:
 
-- `conformance/conformance_test.go`
-- `conformance/testcase.go` if shared helpers make the table clearer
+- Root package behavior tests:
+  - `conditional_test.go`
+  - `syntax_test.go`
+  - `eval_test.go`
+  - `context_test.go`
+  - `regex_test.go`
+- Package-local tests should remain where they are useful for narrow parser,
+  lexer, or evaluator failures.
+- A tiny test helper file is acceptable if it removes real duplication. Avoid a
+  custom test framework.
 
 Table shape:
 
@@ -232,20 +358,17 @@ tests := []struct {
 	source     string
 	expression string
 	context    ContextKind
-	scope      object.Struct
+	build      Build
+	env        map[string]string
 	want       bool
-	wantError  bool
+	wantError  errorKind
 }{
 	{
 		name:       "docs branch starts with features slash",
 		source:     "docs/pipelines/configure/conditionals",
 		expression: `build.branch =~ /^features\//`,
 		context:    ContextStepIf,
-		scope: object.Struct{
-			"build": object.Struct{
-				"branch": &object.String{Value: "features/foo"},
-			},
-		},
+		build:      Build{Branch: "features/foo"},
 		want: true,
 	},
 	{
@@ -253,11 +376,7 @@ tests := []struct {
 		source:     "buildkite/buildkite spec/models/conditional/evaluator_spec.rb",
 		expression: `build.tag == null`,
 		context:    ContextStepIf,
-		scope: object.Struct{
-			"build": object.Struct{
-				"tag": &object.Null{},
-			},
-		},
+		build:      Build{},
 		want: true,
 	},
 }
@@ -291,97 +410,111 @@ Upstream sources to port:
 
 Porting order:
 
-1. Direct expression semantics that are already supported or immediately
-   planned: comments, precedence, negation, booleans, nulls, strings, arrays,
-   `includes`, escaped regex delimiters, regex flags, and short-circuiting.
-2. Negative parser and evaluator cases that can be represented as stable error
-   categories: wrong operators, unknown variables, invalid function calls,
-   invalid regex literals, final non-boolean values, and invalid `env()`
-   arguments.
-3. Buildkite context cases once the context builder exists:
-   `organization.*`, `pipeline.*`, `build.*`, `build.env()`, webhook event and
-   action fields, pull request label fields, project env merging, step
-   variables, notification contexts, and nullable documented values.
-4. Upstream-only or not-yet-local syntax should be classified before it is
-   implemented: ternary `? :`, shell-style environment interpolation such as
-   `$branch` and `${branch:-fallback}`, typed variables/enums, dotted function
-   names, token-position assertions, maximum nesting validation, and exact
-   server regex restrictions.
+1. Direct expression semantics: comments, precedence, negation, booleans,
+   nulls, strings, numbers, arrays, `includes`, escaped regex delimiters, regex
+   flags, ternaries, and short-circuiting.
+2. Shell substitution semantics from the server evaluator: set, unset, empty,
+   default, alternate, required, substring, nested fallback, and bad substring
+   length cases.
+3. Negative parser, type-checker, and evaluator cases represented as stable Go
+   error categories: wrong operators, unknown variables, invalid function calls,
+   invalid regex literals, final non-boolean values, invalid `env()` arguments,
+   enum mismatches, and maximum nesting.
+4. Buildkite context cases:
+   `organization.*`, `pipeline.*`, `build.*`, `env()`, `build.env()`, webhook
+   event/action fields, pull request label fields, project env merging, step
+   variables, notification contexts, nullable documented values, and enum
+   validation.
+5. Divergence tests: local-only syntax such as `@>` and regex features rejected
+   by the server should have explicit rejection tests.
 
 Definition of done:
 
 - Every docs example expression is represented in table-driven tests.
 - Ported upstream examples carry a `source` string that points back to the
   originating `buildkite/buildkite` spec file.
-- Unsupported upstream cases are recorded as planned parity work rather than
-  landed as skipped or permanently failing tests.
+- Server-supported upstream cases are either passing tests or recorded in this
+  plan as the next implementation slice. Do not land permanently skipped parity
+  tests.
 - Tests can assert parse errors, evaluation errors, and boolean results.
+- Test helpers assert errors by kind and location where meaningful, not by
+  brittle full-message string comparisons unless message parity is explicitly in
+  scope.
 - Existing unit tests still run through `mise run check`.
 - The helper makes parser errors visible; tests must not evaluate a nil or
   erroneous AST by accident.
 
-### Slice 2: Public Buildkite Evaluation API
+### Slice 2: Public API And Package Boundary
 
-Add a small public API that owns parse errors, evaluation errors, and result type
-checking.
+Add the root `conditional` package API and make implementation package ownership
+clear.
 
 Definition of done:
 
-- `EvaluateBuildkite(expression, ctx)` returns `(bool, error)`.
-- Parser errors are joined into a useful error.
-- Evaluator errors are returned as errors.
+- `Validate(expression, ctx)` and `Evaluate(expression, ctx)` exist in the root
+  package.
+- Exported context structs and enums have doc comments and stable field names.
+- Parser, type-checker, evaluator, and regex errors are returned as typed Go
+  errors or error categories.
 - Non-boolean final objects are errors.
-- Existing generic package APIs remain available.
-- Table-driven conformance tests use this API for Buildkite parity tests.
+- Table-driven conformance tests use the root API for parity assertions.
+- Implementation packages are either moved under `internal/` or documented as
+  unstable implementation details pending a final breaking cleanup.
 
-### Slice 3: Buildkite Context Builder
+### Slice 3: Parser Grammar Parity
 
-Implement documented variable mapping for `build`, `pipeline`, `organization`,
-and `step`.
-
-Definition of done:
-
-- Context structs cover every variable listed in the docs.
-- Nullable documented variables are materialized as `object.Null` when absent in
-  a context where they are valid.
-- Context-ineligible variables fail closed instead of being silently available.
-- Array variables such as `build.creator.teams`, `build.author.teams`, and
-  `build.pull_request.labels` become `object.Array`.
-- Verified-user-sensitive values are represented explicitly, including cases
-  where the server cannot attach teams to the actor.
-- The conformance tables cover every documented variable at least once.
-
-### Slice 4: `build.env()` Semantics
-
-Support the documented `build.env("NAME")` function.
-
-Implementation options:
-
-- Extend the AST/evaluator to support calls through a dotted receiver, such as
-  `build.env("BUILDKITE_TAG")`.
-- Or lower `build.env("NAME")` during evaluation into a scoped function lookup
-  while keeping the parser AST unchanged.
-
-Recommended direction: support method-style calls explicitly in the evaluator.
-That matches the docs and avoids encoding a dotted function name into the lexer.
+Make the parser match `app/models/conditional/grammar.kpeg`.
 
 Definition of done:
 
-- `build.env("BUILDKITE_TAG")` returns a string when present and `null` when
+- Dotted variable identifiers parse as flat assigned-variable names.
+- Dotted function identifiers parse as flat function names.
+- Ternary expressions parse with server precedence.
+- Shell substitution syntax parses in operands, double-quoted strings, fallback
+  strings, and substring arguments.
+- String escape behavior matches the server grammar.
+- Regex literal parsing matches server delimiters and the optional `i` flag.
+- `@>` and any other non-server operators are removed from the Buildkite
+  grammar.
+- Parser no-panic tests cover unterminated strings, regexes, comments,
+  substitutions, and deeply nested expressions.
+
+### Slice 4: Type Checking And Evaluation Semantics
+
+Port the server type-checker and evaluator behavior without copying the Ruby
+object model.
+
+Definition of done:
+
+- Equality, inequality, regex matching, `includes`, logical operators, `!`, and
+  ternary evaluation match upstream specs.
+- Arrays, nulls, booleans, strings, numbers, regexes, typed variables, functions,
+  and enums are type-checked before evaluation.
+- Unknown variables/functions, wrong arity, unsupported operators, incompatible
+  comparisons, and non-boolean logical operands fail closed.
+- Short-circuiting prevents skipped branches from evaluating missing variables
+  or failing functions, matching server behavior.
+- Environment substitution evaluates set, unset, empty, required, default,
+  alternate, and substring forms the same way as the server.
+
+### Slice 5: Buildkite Context And `env()` Semantics
+
+Implement `Build::Condition` context behavior in Go.
+
+Definition of done:
+
+- Context structs cover every server assignment in `Build::Condition`, including
+  deprecated-but-server-supported values such as `build.fixed` if the server
+  still exposes them.
+- Nullable documented variables are materialized as `null` when valid but
   absent.
-- Custom variables are available when provided by the caller.
-- Non-string arguments, wrong arity, and unknown function receivers fail closed.
-- Docs examples using both `build.tag` and `build.env("BUILDKITE_TAG")` pass.
-
-### Slice 5: Context Availability And Type Semantics
-
-Lock down behavior that is easy to get subtly wrong.
-
-Test matrix:
-
-- `build.state` in build notification context versus step context.
-- `pipeline.started_failing` and `pipeline.started_passing` in build notification
-  context.
+- Context-ineligible variables fail closed instead of being silently available.
+- `env()` returns server-compatible strings and validation behavior.
+- `build.env()` is a flat function identifier and returns server-compatible
+  nullable values.
+- `BUILDKITE_*` allowlist validation, typo suggestions, invalid names, and names
+  starting with `$` match server error categories.
+- Project env and build env merge semantics match `Build::PipelineEnvironment`.
 - `step.*` only in step notification context.
 - `build.pull_request.*` values on PR and non-PR builds.
 - `build.merge_queue.*` values on merge queue and non-merge-queue builds.
@@ -389,23 +522,15 @@ Test matrix:
   `build.creator.*`, `build.author.teams`, and `build.creator.teams`.
 - Enumerated values for `build.source`, `build.state`, `step.type`,
   `step.state`, and `step.outcome`.
-- Equality across same and different types.
-- `includes` for arrays of strings, integers, booleans, nulls, and mixed-type
-  arrays if the server permits them.
-- `!` on booleans, `null`, strings, integers, arrays, and missing values.
-- Missing unknown properties versus documented nullable properties.
+- `build.source_event`, `build.source_action`, and `build.pull_request.label`
+  webhook behavior matches upstream tests.
+- Verified-user-sensitive values and visible team lists are represented in the
+  caller-provided context model without hard-coding server database behavior.
 
-Definition of done:
+### Slice 6: Regex Exact Parity
 
-- Local behavior is either server-proven or explicitly recorded as a chosen
-  compatibility behavior.
-- Error messages do not need byte-for-byte parity, but error categories should be
-  stable enough for callers and tests.
-
-### Slice 6: Regex And Interpolation Boundary
-
-Keep regexp2 for syntax parity, with the accepted backtracking tradeoff bounded
-by `MatchTimeout`.
+Keep regexp2 as the matcher, but validate regex syntax against the server's
+accepted feature set.
 
 Required coverage:
 
@@ -413,29 +538,42 @@ Required coverage:
 - Escaped `/` delimiters.
 - `i` flag.
 - Unsupported flags.
-- POSIX classes in RE2 compatibility mode.
+- Server-rejected constructs from `Conditional::Regexp`, including lookbehind,
+  negative lookbehind, atomic groups, possessive quantifiers, named captures, and
+  conditionals.
+- Server validation for shorthand character classes, POSIX classes, and any
+  scanner cases where Ruby rejects syntax that regexp2 would accept.
 - Literal dollar matches: `/\$/`, `/fee\$/`.
 - Raw anchor matches: `/fee$/`, `/^v[0-9]+\.0$/`.
-- Docs/YAML examples that escape anchors before interpolation.
-
-Recommended direction:
-
-- Keep parser-level regex semantics exact: raw `$` is an anchor, `\$` is a
-  literal dollar.
-- Add an explicit interpolation-aware input mode only if the server oracle
-  proves callers need to pass pre-interpolation condition strings into this
-  library.
-- Do not reintroduce heuristic parser rewriting of `\$`; it cannot distinguish
-  anchored docs examples from legitimate literal-dollar regexes.
 
 Definition of done:
 
-- Test names distinguish raw evaluator expressions from Buildkite YAML/upload
-  expressions.
-- The README documents whichever input modes are supported.
+- Test names distinguish regex anchors and literal-dollar matches from
+  shell-substitution cases.
 - Regex timeout behavior has a focused test that cannot make CI slow or flaky.
+- The library rejects server-rejected regex features even if regexp2 can execute
+  them.
 
-### Slice 7: Optional Server Oracle
+### Slice 7: Divergence Removal And Codebase Cleanup
+
+Remove syntax, tests, examples, and package shape that conflict with exact
+server parity.
+
+Definition of done:
+
+- `@>` is removed from the Buildkite parser/evaluator/tests/docs unless upstream
+  server evidence proves it is accepted.
+- README examples are valid server conditionals. For example, remove or fix the
+  current `meta-data("foo")` example because the docs say build meta-data is not
+  available in conditional expressions.
+- Nested object lookup is not part of the Buildkite evaluation surface unless it
+  is only an internal representation of flat assignments.
+- Public docs describe the root package API, context kinds, variable
+  availability, supported syntax, and fail-closed behavior.
+- Package boundaries are reviewed for cohesion, exported identifiers, comments,
+  and unnecessary interfaces.
+
+### Slice 8: Optional Server Oracle
 
 Add a tool for checking table-driven conformance cases against Buildkite server
 behavior.
@@ -459,20 +597,6 @@ Definition of done:
 - If a live oracle is not available, the plan records exactly which semantics
   remain inferred from docs rather than server-proven.
 
-### Slice 8: Documentation And Compatibility Cleanup
-
-Update public docs once the implementation and conformance tables settle.
-
-Definition of done:
-
-- README support list matches implemented parity.
-- README examples are valid expressions. For example, remove or fix the current
-  `meta-data("foo")` example because the docs say build meta-data is not
-  available in conditional expressions.
-- Document `@>` as a compatibility extension if it remains.
-- Document context kinds and which variables are available in each.
-- Document the regex input boundary clearly.
-
 ## Verification
 
 Run on every implementation slice:
@@ -484,16 +608,22 @@ git diff --check
 
 Add these targeted checks as the plan lands:
 
-- Unit tests for lexer/parser/evaluator behavior around each syntax feature.
-- Table-driven conformance tests for docs examples and server-derived edge
+- Root package table-driven tests for every supported server behavior.
+- Package-local unit tests for lexer/parser/type-checker/evaluator behavior
+  where failures are easier to diagnose below the public API.
+- Ported conformance tests for docs examples and upstream server-derived edge
   cases.
 - Fuzz tests or bounded randomized tests for lexer/parser no-panic behavior,
-  especially regex literals, strings, comments, and nested expressions.
+  especially regex literals, strings, comments, shell substitutions, ternaries,
+  and nested expressions.
 - Regression tests for short-circuiting so missing values in skipped branches do
   not fail evaluation.
 - Regression tests for nullable documented variables versus unknown properties.
 - Regex timeout test for a pathological regexp2 pattern, written with a short
   timeout and generous assertion so it is deterministic.
+- Rejection tests for divergent local syntax and server-rejected regex features.
+- `go test -run` examples in PR descriptions for narrow iteration, with
+  `mise run check` as the final validation.
 - Buildkite pipeline validation with `bk pipeline validate --file
   .buildkite/pipeline.yml` when CI config changes.
 
@@ -501,66 +631,77 @@ Add these targeted checks as the plan lands:
 
 - The repo uses `master` as the default branch.
 - `mise run check` is the canonical local validation command.
-- `regexp2` remains the regex engine for server-side syntax parity. The linear
-  time guarantee from Go's regexp engine is not a requirement for this project,
-  but regex matching must stay bounded by timeout.
-- Keep raw expression regex semantics in the parser. Do not use heuristic
-  rewriting of `\$` into `$`; handle interpolation as a separate explicit input
-  concern if required.
+- Exact server-side Buildkite syntax and semantics are the target. Public docs
+  are necessary coverage, but upstream server grammar/spec behavior is also in
+  scope.
+- Divergent local syntax can be removed. `@>` should not remain in the
+  Buildkite language unless upstream server evidence proves it is accepted.
+- Dotted names are flat server identifiers, not object/method syntax in the
+  Buildkite grammar.
+- Ternary expressions, shell-style environment substitutions, typed variables,
+  enums, and dotted function names are required parity work because upstream
+  server specs cover them.
+- `regexp2` remains the regex engine, but the library must reject regex features
+  the server rejects. The linear-time guarantee from Go's regexp engine is not a
+  requirement, but regex matching must stay bounded by timeout.
+- Keep regex literal semantics in the parser. Raw `$` is a regex anchor and
+  `\$` is a literal dollar; shell substitution handling belongs to the server
+  grammar, not heuristic regex rewriting.
 - Port upstream Buildkite specs into plain table-driven Go tests before
   inventing bespoke parity cases. Do not use YAML test data for the conformance
   corpus.
-- Keep `@>` for now as a compatibility extension, even though the docs now list
-  `includes`.
+- The root package should be the supported Go library API. Existing subpackages
+  can remain during implementation, but they are not the final parity contract.
 
 ## Open Questions
 
 ### Blocking First Implementation Slice
 
-None. The first slice can land table-driven Go conformance tests for docs
-examples and directly portable upstream cases without settling every semantic
-edge.
+- Public API names: the plan recommends root-package `Validate` and `Evaluate`.
+  That is idiomatic and terse, but this is the point to change it if we want
+  `Check`, `Compile`, or an explicit `Expression` type.
 
 ### Needed Before Server-Parity Claim
 
 - Which server surface can act as the oracle for expression evaluation? The
   default should be committed Go tests plus an optional check tool; a live server
   dependency should not be required in normal CI.
-- Does the library need to accept pre-interpolation YAML/upload conditional
-  strings, or only the expression string after Buildkite interpolation? The
-  recommended default is two explicit modes if both are needed.
-- Should context-ineligible documented variables return `null` or error? The
-  recommended default is: valid-but-absent values return `null`; invalid for the
-  context errors. Verify with the server oracle before declaring parity.
-- Which upstream-only syntax is required for the public parity claim? The
-  upstream server specs cover ternary `? :`, shell-style environment
-  interpolation, typed variables/enums, dotted function names, and
-  position-aware errors, but not all of that appears in the current public docs.
-- Should regexp2 be restricted to the exact server-accepted regex feature set?
-  The current Go implementation accepts a broader regex syntax than some
-  upstream server tests expect, so these cases need either implementation
-  restrictions or an explicit compatibility note before claiming exact parity.
+- Error message parity: should the Go library match server error text
+  byte-for-byte, or is parity on accept/reject behavior, error category, and
+  source location enough? The recommended default is category and location
+  parity, because that gives callers stable Go errors without cloning every Ruby
+  string.
+- Context data model depth: how much server-derived behavior should the caller
+  provide as values versus the library deriving it? The recommended default is
+  to derive pure conditional values, such as `source_event` from env, but require
+  callers to provide database-backed facts such as visible teams and preferred
+  emails.
+- Breaking package cleanup: should implementation packages move under
+  `internal/` once the root API exists? The recommended default is yes if this
+  repo can make a breaking cleanup; otherwise mark subpackages as unstable and
+  avoid promising them as public API.
 
 ### Safe To Defer
 
-- Byte-for-byte error message parity. Error categories matter more than matching
-  server text exactly.
-- Removing or deprecating `@>`. Keep it until compatibility impact is known.
-- Public API naming. The first implementation can use an internal harness and
-  settle package names before exposing a stable top-level API.
+- Optional live server oracle. Ported upstream specs should carry the first
+  several implementation slices.
+- Byte-for-byte error text if the first release can provide stable typed errors,
+  source locations, and exact accept/reject behavior.
 
 ## Key Learnings From Pressure-Testing
 
-- Exact parity cannot be proven from the docs examples alone. The docs define
-  syntax and public variables, but several important semantics need either a
-  server oracle or explicitly recorded decisions.
-- Regex `$` handling is the highest-risk ambiguity because docs examples are
-  affected by interpolation while the parser also needs normal regex literal
-  semantics. The plan avoids another heuristic parser rewrite and instead
-  separates raw expression evaluation from interpolation-aware input handling.
+- Exact parity cannot be proven from the public docs examples alone. The
+  upstream grammar and specs define real server syntax, including ternary
+  expressions and shell-style environment substitutions, that must be included.
+- Dotted identifiers are a larger architectural issue than `build.env()` alone.
+  The server uses flat assignment/function names; a nested object lookup model
+  will keep producing edge-case drift.
+- Regex `$` handling should not be solved with parser heuristics. Raw `$` and
+  `\$` have normal regex meaning inside regex literals; shell substitution is a
+  separate part of the server grammar.
 - The current generic scope API makes simple tests easy but hides Buildkite's
-  nullable and context-specific variable rules. A Buildkite context builder is
-  the smallest useful abstraction for parity.
+  nullable, typed, enum, and context-specific variable rules. A server-style
+  Buildkite context builder is the smallest useful abstraction for parity.
 - Table-driven conformance tests should land before more behavior changes. They
   give every follow-up PR a durable place to encode docs examples, server
   observations, and regressions.
@@ -568,3 +709,6 @@ edge.
   corpus. Porting those examples into Go tables should be the default source of
   new tests, with invented cases reserved for gaps the upstream specs and docs
   do not cover.
+- SOLID in this repo should mean cohesive Go package responsibilities and a
+  small public root API. It should not mean adding broad interfaces or a Ruby-like
+  class structure.
