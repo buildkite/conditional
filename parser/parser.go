@@ -4,12 +4,15 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/buildkite/conditional/ast"
 	"github.com/buildkite/conditional/lexer"
 	"github.com/buildkite/conditional/token"
 	"github.com/dlclark/regexp2"
 )
+
+const regexpMatchTimeout = time.Second
 
 const (
 	_ int = iota
@@ -228,6 +231,7 @@ func (p *Parser) parseRegexp() ast.Expression {
 		p.errors = append(p.errors, msg)
 		return nil
 	}
+	r.MatchTimeout = regexpMatchTimeout
 
 	ar.Regexp = r
 	return ar
@@ -235,12 +239,15 @@ func (p *Parser) parseRegexp() ast.Expression {
 
 func regexpPattern(literal string) string {
 	// Buildkite docs require escaping $ anchors before conditional evaluation
-	// to avoid environment substitution.
-	return strings.ReplaceAll(literal, `\$`, `$`)
+	// to avoid environment substitution. Keep literal dollar escapes intact.
+	if strings.HasSuffix(literal, `\$`) {
+		return strings.TrimSuffix(literal, `\$`) + "$"
+	}
+	return literal
 }
 
 func regexpOptions(flags string) (regexp2.RegexOptions, error) {
-	options := regexp2.None
+	options := regexp2.RegexOptions(regexp2.RE2)
 	for _, flag := range flags {
 		switch flag {
 		case 'i':

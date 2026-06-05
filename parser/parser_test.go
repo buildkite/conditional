@@ -69,6 +69,9 @@ func TestRegexpExpression(t *testing.T) {
 		t.Errorf("regexp.TokenLiteral not %s. got=%s", `^llamas?`,
 			literal.TokenLiteral())
 	}
+	if literal.Regexp.MatchTimeout != regexpMatchTimeout {
+		t.Errorf("regexp.MatchTimeout not %v. got=%v", regexpMatchTimeout, literal.Regexp.MatchTimeout)
+	}
 }
 
 func TestRegexpFlagsExpression(t *testing.T) {
@@ -95,6 +98,23 @@ func TestRegexpUnsupportedFlags(t *testing.T) {
 
 	if len(p.Errors()) == 0 {
 		t.Fatalf("expected parser errors")
+	}
+}
+
+func TestRegexpPatternEscapedDollar(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{`release-123\$`, `release-123$`},
+		{`^v[0-9]+\.0\$`, `^v[0-9]+\.0$`},
+		{`price \$[0-9]+`, `price \$[0-9]+`},
+	}
+
+	for _, tt := range tests {
+		if got := regexpPattern(tt.input); got != tt.expected {
+			t.Errorf("regexpPattern(%q) = %q, want %q", tt.input, got, tt.expected)
+		}
 	}
 }
 
