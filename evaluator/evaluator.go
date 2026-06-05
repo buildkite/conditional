@@ -222,12 +222,10 @@ func evalLogicalExpression(operator string, left object.Object, rightExp ast.Exp
 func evalBangOperatorExpression(right object.Object) object.Object {
 	// defer untrace(trace("evalBangOperatorExpression", right))
 
-	switch right {
-	case TRUE:
-		return FALSE
-	case FALSE:
-		return TRUE
-	case NULL:
+	switch right := right.(type) {
+	case *object.Boolean:
+		return nativeBoolToBooleanObject(!right.Value)
+	case *object.Null:
 		return TRUE
 	default:
 		return FALSE

@@ -25,7 +25,11 @@ func Validate(expression string, ctx Context) error {
 	if err != nil {
 		return err
 	}
-	return validateExpression(expr, entryPoint)
+	ctx.EntryPoint = entryPoint
+	if err := validateExpression(expr, entryPoint); err != nil {
+		return err
+	}
+	return validateBooleanResult(expr, ctx)
 }
 
 // Evaluate evaluates expression in the selected Buildkite context.
@@ -95,7 +99,25 @@ func validateExpression(expr ast.Expression, entryPoint EntryPoint) error {
 	if err := validateEnvCalls(expr); err != nil {
 		return err
 	}
+	if err := validateOperators(expr); err != nil {
+		return err
+	}
 	return nil
+}
+
+func validateBooleanResult(expr ast.Expression, ctx Context) error {
+	result := evaluator.Eval(expr, buildScope(ctx))
+	switch result := result.(type) {
+	case *object.Boolean:
+		return nil
+	case *object.Error:
+		return &Error{Kind: ErrorKindEvaluation, Message: result.Message}
+	default:
+		return &Error{
+			Kind:    ErrorKindResult,
+			Message: fmt.Sprintf("expected boolean result, got %s", result.Type()),
+		}
+	}
 }
 
 func validateEnvCalls(expr ast.Expression) error {
@@ -130,6 +152,35 @@ func validateEnvCalls(expr ast.Expression) error {
 	case *ast.ArrayLiteral:
 		for _, element := range expr.Elements {
 			if err := validateEnvCalls(element); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func validateOperators(expr ast.Expression) error {
+	switch expr := expr.(type) {
+	case *ast.PrefixExpression:
+		return validateOperators(expr.Right)
+	case *ast.InfixExpression:
+		if expr.Operator == "@>" {
+			return &Error{Kind: ErrorKindValidation, Message: "@> is not Buildkite conditional syntax"}
+		}
+		if err := validateOperators(expr.Left); err != nil {
+			return err
+		}
+		return validateOperators(expr.Right)
+	case *ast.CallExpression:
+		for _, arg := range expr.Arguments {
+			if err := validateOperators(arg); err != nil {
+				return err
+			}
+		}
+	case *ast.ArrayLiteral:
+		for _, element := range expr.Elements {
+			if err := validateOperators(element); err != nil {
 				return err
 			}
 		}
@@ -225,45 +276,47 @@ func envNameArg(args []object.Object) (string, *object.Error) {
 func flatAssignments(ctx Context) object.Struct {
 	build := ctx.Build
 	assignments := object.Struct{
-		"build.id":                            stringValue(build.ID),
-		"build.state":                         stringValue(build.State),
-		"build.fixed":                         boolValue(build.Fixed),
-		"build.blocked_state":                 stringValue(build.BlockedState),
-		"build.source":                        stringValue(build.Source),
-		"build.source_event":                  stringValue(sourceEvent(ctx)),
-		"build.source_action":                 stringValue(sourceAction(ctx)),
-		"build.branch":                        stringValue(build.Branch),
-		"build.tag":                           stringValue(build.Tag),
-		"build.message":                       stringValue(build.Message),
-		"build.commit":                        stringValue(build.Commit),
-		"build.number":                        intValue(build.Number),
-		"build.creator.id":                    stringValue(build.Creator.ID),
-		"build.creator.name":                  stringValue(build.Creator.Name),
-		"build.creator.email":                 stringValue(build.Creator.Email),
-		"build.creator.teams":                 stringArrayValue(build.Creator.Teams),
-		"build.creator.verified":              boolValue(build.Creator.Verified),
-		"build.author.id":                     stringValue(build.Author.ID),
-		"build.author.name":                   stringValue(build.Author.Name),
-		"build.author.email":                  stringValue(build.Author.Email),
-		"build.author.teams":                  stringArrayValue(build.Author.Teams),
-		"build.scm.author.name":               stringValue(build.SCM.AuthorName),
-		"build.scm.author.email":              stringValue(build.SCM.AuthorEmail),
-		"build.scm.committer.name":            stringValue(build.SCM.CommitterName),
-		"build.scm.committer.email":           stringValue(build.SCM.CommitterEmail),
-		"build.pull_request.id":               stringValue(build.PullRequest.ID),
-		"build.pull_request.base_branch":      stringValue(build.PullRequest.BaseBranch),
-		"build.pull_request.draft":            boolValue(build.PullRequest.Draft),
-		"build.pull_request.label":            stringValue(pullRequestLabel(ctx)),
-		"build.pull_request.labels":           stringArrayValue(build.PullRequest.Labels),
-		"build.pull_request.repository":       stringValue(build.PullRequest.Repository),
-		"build.pull_request.repository.fork":  boolValue(build.PullRequest.RepositoryFork),
-		"build.merge_queue.base_branch":       stringValue(build.MergeQueue.BaseBranch),
-		"build.merge_queue.base_commit":       stringValue(build.MergeQueue.BaseCommit),
-		"pipeline.id":                         stringValue(ctx.Pipeline.ID),
-		"pipeline.name":                       stringValue(ctx.Pipeline.Name),
-		"pipeline.slug":                       stringValue(ctx.Pipeline.Slug),
-		"pipeline.default_branch":             stringValue(ctx.Pipeline.DefaultBranch),
-		"pipeline.repository":                 stringValue(ctx.Pipeline.Repository),
+		"build.id":                           stringValue(build.ID),
+		"build.state":                        stringValue(build.State),
+		"build.fixed":                        boolValue(build.Fixed),
+		"build.blocked_state":                stringValue(build.BlockedState),
+		"build.source":                       stringValue(build.Source),
+		"build.source_event":                 stringValue(sourceEvent(ctx)),
+		"build.source_action":                stringValue(sourceAction(ctx)),
+		"build.branch":                       stringValue(build.Branch),
+		"build.tag":                          stringValue(build.Tag),
+		"build.message":                      stringValue(build.Message),
+		"build.commit":                       stringValue(build.Commit),
+		"build.number":                       intValue(build.Number),
+		"build.creator.id":                   stringValue(build.Creator.ID),
+		"build.creator.name":                 stringValue(build.Creator.Name),
+		"build.creator.email":                stringValue(build.Creator.Email),
+		"build.creator.teams":                stringArrayValue(build.Creator.Teams),
+		"build.creator.verified":             boolValue(build.Creator.Verified),
+		"build.author.id":                    stringValue(build.Author.ID),
+		"build.author.name":                  stringValue(build.Author.Name),
+		"build.author.email":                 stringValue(build.Author.Email),
+		"build.author.teams":                 stringArrayValue(build.Author.Teams),
+		"build.scm.author.name":              stringValue(build.SCM.AuthorName),
+		"build.scm.author.email":             stringValue(build.SCM.AuthorEmail),
+		"build.scm.committer.name":           stringValue(build.SCM.CommitterName),
+		"build.scm.committer.email":          stringValue(build.SCM.CommitterEmail),
+		"build.pull_request.id":              stringValue(build.PullRequest.ID),
+		"build.pull_request.base_branch":     stringValue(build.PullRequest.BaseBranch),
+		"build.pull_request.draft":           boolValue(build.PullRequest.Draft),
+		"build.pull_request.label":           stringValue(pullRequestLabel(ctx)),
+		"build.pull_request.labels":          stringArrayValue(build.PullRequest.Labels),
+		"build.pull_request.repository":      stringValue(build.PullRequest.Repository),
+		"build.pull_request.repository.fork": boolValue(build.PullRequest.RepositoryFork),
+		"build.merge_queue.base_branch":      stringValue(build.MergeQueue.BaseBranch),
+		"build.merge_queue.base_commit":      stringValue(build.MergeQueue.BaseCommit),
+		"pipeline.id":                        stringValue(ctx.Pipeline.ID),
+		"pipeline.name":                      stringValue(ctx.Pipeline.Name),
+		"pipeline.slug":                      stringValue(ctx.Pipeline.Slug),
+		"pipeline.default_branch":            stringValue(ctx.Pipeline.DefaultBranch),
+		"pipeline.repository":                stringValue(ctx.Pipeline.Repository),
+		// Upstream Build::Condition exposes these in its base assignment table,
+		// even though the public docs describe them as notification variables.
 		"pipeline.started_passing":            boolValue(ctx.Pipeline.StartedPassing),
 		"pipeline.started_failing":            boolValue(ctx.Pipeline.StartedFailing),
 		"pipeline.next_finished_build_exists": boolValue(ctx.Pipeline.NextFinishedBuildExists),

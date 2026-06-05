@@ -259,6 +259,13 @@ func TestValidateAcceptsBlank(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsNonBooleanResult(t *testing.T) {
+	err := Validate(`"not boolean"`, Context{EntryPoint: EntryPointBuildCondition})
+	if !IsErrorKind(err, ErrorKindResult) {
+		t.Fatalf("Validate error = %v, want %s", err, ErrorKindResult)
+	}
+}
+
 func TestValidateRejectsMalformedEnvCalls(t *testing.T) {
 	tests := []string{
 		`env() == ""`,
@@ -270,6 +277,45 @@ func TestValidateRejectsMalformedEnvCalls(t *testing.T) {
 		if !IsErrorKind(err, ErrorKindValidation) {
 			t.Fatalf("Validate(%q) error = %v, want %s", expression, err, ErrorKindValidation)
 		}
+	}
+}
+
+func TestValidateRejectsNonServerOperators(t *testing.T) {
+	branch := "main"
+
+	err := Validate(`["main"] @> build.branch`, Context{
+		EntryPoint: EntryPointBuildCondition,
+		Build:      Build{Branch: &branch},
+	})
+	if !IsErrorKind(err, ErrorKindValidation) {
+		t.Fatalf("Validate error = %v, want %s", err, ErrorKindValidation)
+	}
+
+	_, err = Evaluate(`["main"] @> build.branch`, Context{
+		EntryPoint: EntryPointBuildCondition,
+		Build:      Build{Branch: &branch},
+	})
+	if !IsErrorKind(err, ErrorKindValidation) {
+		t.Fatalf("Evaluate error = %v, want %s", err, ErrorKindValidation)
+	}
+}
+
+func TestPipelineTransitionFieldsFollowServerAssignmentTable(t *testing.T) {
+	startedPassing := true
+	startedFailing := false
+
+	got, err := Evaluate(`pipeline.started_passing && !pipeline.started_failing`, Context{
+		EntryPoint: EntryPointBuildCondition,
+		Pipeline: Pipeline{
+			StartedPassing: &startedPassing,
+			StartedFailing: &startedFailing,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Evaluate returned error: %v", err)
+	}
+	if !got {
+		t.Fatalf("Evaluate returned false, want true")
 	}
 }
 
