@@ -2,13 +2,16 @@ package parser
 
 import (
 	"fmt"
-	"regexp"
 	"strconv"
+	"time"
 
 	"github.com/buildkite/conditional/ast"
 	"github.com/buildkite/conditional/lexer"
 	"github.com/buildkite/conditional/token"
+	"github.com/dlclark/regexp2"
 )
+
+const regexpMatchTimeout = time.Second
 
 const (
 	_ int = iota
@@ -213,17 +216,40 @@ func (p *Parser) parseStringLiteral() ast.Expression {
 }
 
 func (p *Parser) parseRegexp() ast.Expression {
-	ar := &ast.Regexp{Token: p.curToken}
+	ar := &ast.Regexp{Token: p.curToken, Flags: p.curToken.Flags}
 
-	r, err := regexp.Compile(p.curToken.Literal)
+	options, err := regexpOptions(p.curToken.Flags)
+	if err != nil {
+		p.errors = append(p.errors, err.Error())
+		return nil
+	}
+
+	r, err := regexp2.Compile(p.curToken.Literal, options)
 	if err != nil {
 		msg := fmt.Sprintf("could not parse regexp: %v", err)
 		p.errors = append(p.errors, msg)
 		return nil
 	}
+	// regexp2 is intentionally used for Buildkite server-side syntax parity.
+	// It can backtrack, so keep matching bounded.
+	r.MatchTimeout = regexpMatchTimeout
 
 	ar.Regexp = r
 	return ar
+}
+
+func regexpOptions(flags string) (regexp2.RegexOptions, error) {
+	options := regexp2.RegexOptions(regexp2.RE2)
+	for _, flag := range flags {
+		switch flag {
+		case 'i':
+			options |= regexp2.IgnoreCase
+		default:
+			return regexp2.None, fmt.Errorf("unsupported regexp flag: %c", flag)
+		}
+	}
+
+	return options, nil
 }
 
 func (p *Parser) parsePrefixExpression() ast.Expression {
