@@ -267,7 +267,7 @@ func (c typeChecker) expectIncludesRight(expr ast.Expression) error {
 func variableTypes(ctx Context) map[string]valueType {
 	variables := map[string]valueType{
 		"build.id":                            stringTypeFor(ctx.Build.ID),
-		"build.state":                         enumValueTypeFor(ctx.Build.State, "build state", "creating", "started", "running", "scheduled", "blocked", "passed", "failing", "failed", "started_failing", "canceling", "canceled", "skipped", "not_run"),
+		"build.state":                         enumValueTypeFor(ctx.Build.State, "build state", "creating", "started", "running", "scheduled", "blocked", "passed", "failing", "failed", "canceling", "canceled", "skipped", "not_run"),
 		"build.fixed":                         boolTypeFor(ctx.Build.Fixed),
 		"build.blocked_state":                 enumValueTypeFor(ctx.Build.BlockedState, "build blocked state", "failed", "passed", "running"),
 		"build.source":                        enumValueTypeFor(ctx.Build.Source, "build source", "api", "ui", "webhook", "trigger_job", "schedule", "pipeline_trigger"),
@@ -316,7 +316,7 @@ func variableTypes(ctx Context) map[string]valueType {
 		variables["step.key"] = stringTypeFor(stepString(ctx.Step, func(step *Step) *string { return step.Key }))
 		variables["step.type"] = enumValueTypeFor(stepString(ctx.Step, func(step *Step) *string { return step.Type }), "step type", "command", "wait", "input", "trigger", "group")
 		variables["step.label"] = stringTypeFor(stepString(ctx.Step, func(step *Step) *string { return step.Label }))
-		variables["step.state"] = enumValueTypeFor(stepString(ctx.Step, func(step *Step) *string { return step.State }), "step state", "ignored", "waiting_for_dependencies", "ready", "running", "failing", "finished")
+		variables["step.state"] = enumValueTypeFor(stepString(ctx.Step, func(step *Step) *string { return step.State }), "step state", "ignored", "waiting_for_dependencies", "ready", "waiting_for_input", "running", "failing", "canceled", "finished")
 		variables["step.outcome"] = enumValueTypeFor(stepString(ctx.Step, func(step *Step) *string { return step.Outcome }), "step outcome", "neutral", "passed", "soft_failed", "hard_failed", "errored")
 	}
 
