@@ -209,6 +209,9 @@ func EvaluateLocal(c Case) Result {
 
 // Compare reports whether an actual result matches the expected result for mode.
 func Compare(mode Mode, expected, actual Result) error {
+	if actual.ErrorKind != "" && actual.Result != nil {
+		return fmt.Errorf("result must be empty when error_kind is %q", actual.ErrorKind)
+	}
 	if expected.ErrorKind != actual.ErrorKind {
 		return fmt.Errorf("error kind = %q, want %q", actual.ErrorKind, expected.ErrorKind)
 	}

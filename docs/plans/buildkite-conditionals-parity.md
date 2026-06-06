@@ -1003,7 +1003,7 @@ Definition of done:
 
 Current Slice 8 progress:
 
-- `internal/conformance` now contains a source-tagged conformance corpus that is
+- `internal/conformance` now contains a source-tagged seed oracle corpus that is
   exercised locally by Go tests and by the optional command.
 - `go run ./cmd/conditional conformance` verifies the local corpus and reports
   that no server oracle is configured.
@@ -1016,6 +1016,9 @@ Current Slice 8 progress:
 - A live server oracle command is still an optional private wrapper because this
   public repo should not own Buildkite credentials, server fixtures, or network
   calls in deterministic tests.
+- The oracle corpus is intentionally separate from the broader root unit test
+  tables for now. Future hardening can migrate more of those source-tagged root
+  cases into `internal/conformance` as server-backed coverage grows.
 
 Status: landed.
 
@@ -1099,6 +1102,8 @@ Add these targeted checks as the plan lands:
 - A private server-backed oracle command can be added wherever Buildkite
   credentials and fixtures live. The public repo now has the command protocol
   and committed corpus needed to run it.
+- The broader source-tagged root test tables can be migrated into the oracle
+  corpus when the team wants a larger server-backed comparison set.
 - Byte-for-byte error text if the first release can provide stable typed errors,
   source locations, and exact accept/reject behavior.
 

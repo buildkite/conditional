@@ -20,3 +20,14 @@ func TestCasesMatchLocalEvaluator(t *testing.T) {
 		})
 	}
 }
+
+func TestCompareRejectsResultWithErrorKind(t *testing.T) {
+	result := true
+	err := Compare(ModeValidate, Result{ErrorKind: "validation"}, Result{
+		Result:    &result,
+		ErrorKind: "validation",
+	})
+	if err == nil {
+		t.Fatal("Compare returned nil error, want protocol violation")
+	}
+}

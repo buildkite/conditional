@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/buildkite/conditional/internal/conformance"
@@ -105,7 +106,8 @@ func runOracle(command string, timeout time.Duration, request conformance.Oracle
 	}
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "sh", "-c", command)
+	cmd := exec.Command("sh", "-c", command)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Stdin = bytes.NewReader(payload)
 
 	var stdout bytes.Buffer
@@ -113,14 +115,32 @@ func runOracle(command string, timeout time.Duration, request conformance.Oracle
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	if err := cmd.Run(); err != nil {
+	if err := cmd.Start(); err != nil {
+		return conformance.Result{}, err
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Wait()
+	}()
+
+	var waitErr error
+	select {
+	case waitErr = <-done:
+	case <-ctx.Done():
+		killProcessGroup(cmd)
+		<-done
+		waitErr = ctx.Err()
+	}
+
+	if waitErr != nil {
 		if ctx.Err() != nil {
 			return conformance.Result{}, ctx.Err()
 		}
 		if stderr.Len() > 0 {
-			return conformance.Result{}, fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
+			return conformance.Result{}, fmt.Errorf("%w: %s", waitErr, strings.TrimSpace(stderr.String()))
 		}
-		return conformance.Result{}, err
+		return conformance.Result{}, waitErr
 	}
 
 	var result conformance.Result
@@ -128,4 +148,11 @@ func runOracle(command string, timeout time.Duration, request conformance.Oracle
 		return conformance.Result{}, fmt.Errorf("decode oracle response: %w", err)
 	}
 	return result, nil
+}
+
+func killProcessGroup(cmd *exec.Cmd) {
+	if cmd.Process == nil {
+		return
+	}
+	_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 }
