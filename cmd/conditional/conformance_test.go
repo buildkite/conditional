@@ -13,6 +13,8 @@ import (
 )
 
 func TestRunConformanceLocalOnly(t *testing.T) {
+	t.Setenv("CONDITIONAL_ORACLE_COMMAND", "")
+
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
