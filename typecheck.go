@@ -41,7 +41,7 @@ type typeChecker struct {
 
 func typeCheckExpression(expr ast.Expression, ctx Context) error {
 	checker := typeChecker{
-		variables: variableTypes(ctx.EntryPoint),
+		variables: variableTypes(ctx),
 		functions: functionTypes(),
 	}
 
@@ -118,7 +118,7 @@ func (c typeChecker) checkInfix(expr *ast.InfixExpression) (valueType, error) {
 		if err := c.expectAny(expr.Left, kindStringArray, kindNull); err != nil {
 			return valueType{kind: kindUnknown}, err
 		}
-		if err := c.expectAny(expr.Right, kindString, kindRegexp, kindNull); err != nil {
+		if err := c.expectIncludesRight(expr.Right); err != nil {
 			return valueType{kind: kindUnknown}, err
 		}
 		return valueType{kind: kindBool}, nil
@@ -178,6 +178,9 @@ func (c typeChecker) checkComparisonTypes(left, right ast.Expression) (valueType
 		rightType, err := c.check(right)
 		return rightType.withNull(), err
 	}
+	if leftType.kind == kindStringArray {
+		return valueType{kind: kindUnknown}, validationError("unexpected type: expected scalar comparison operand but found %s", leftType.describe())
+	}
 
 	if leftType.enum != nil {
 		if err := c.expectAny(right, kindString, kindNull); err != nil {
@@ -198,6 +201,9 @@ func (c typeChecker) checkComparisonTypes(left, right ast.Expression) (valueType
 			return valueType{kind: kindUnknown}, validationError("%q is not a valid `%s`", literal.Value, identifierName(right))
 		}
 		return rightType, nil
+	}
+	if rightType.kind == kindStringArray {
+		return valueType{kind: kindUnknown}, validationError("unexpected type: expected scalar comparison operand but found %s", rightType.describe())
 	}
 
 	if err := c.expectAny(right, leftType.kind, kindNull); err != nil {
@@ -231,7 +237,22 @@ func (c typeChecker) expectAny(expr ast.Expression, expected ...valueKind) error
 	return validationError("unexpected type: expected %s but found %s", describeKinds(expected), actual.describe())
 }
 
-func variableTypes(entryPoint EntryPoint) map[string]valueType {
+func (c typeChecker) expectIncludesRight(expr ast.Expression) error {
+	actual, err := c.check(expr)
+	if err != nil {
+		return err
+	}
+	if actual.kind == kindUnknown {
+		return nil
+	}
+	switch actual.kind {
+	case kindString, kindRegexp, kindNull:
+		return nil
+	}
+	return validationError("unexpected type: expected string, regular expression, or null but found %s", actual.describe())
+}
+
+func variableTypes(ctx Context) map[string]valueType {
 	variables := map[string]valueType{
 		"build.id":                            stringType(),
 		"build.state":                         enumValueType("build state", "creating", "started", "running", "scheduled", "blocked", "passed", "failing", "failed", "started_failing", "canceling", "canceled", "skipped", "not_run"),
@@ -260,11 +281,11 @@ func variableTypes(entryPoint EntryPoint) map[string]valueType {
 		"build.scm.committer.email":           stringType(),
 		"build.pull_request.id":               stringType(),
 		"build.pull_request.base_branch":      stringType(),
-		"build.pull_request.draft":            boolType(),
+		"build.pull_request.draft":            boolTypeFor(ctx.Build.PullRequest.Draft),
 		"build.pull_request.label":            stringType(),
 		"build.pull_request.labels":           stringArrayType(),
 		"build.pull_request.repository":       stringType(),
-		"build.pull_request.repository.fork":  boolType(),
+		"build.pull_request.repository.fork":  boolTypeFor(ctx.Build.PullRequest.RepositoryFork),
 		"build.merge_queue.base_branch":       stringType(),
 		"build.merge_queue.base_commit":       stringType(),
 		"pipeline.id":                         stringType(),
@@ -279,7 +300,7 @@ func variableTypes(entryPoint EntryPoint) map[string]valueType {
 		"organization.slug":                   stringType(),
 	}
 
-	if stepAllowed(entryPoint) {
+	if stepAllowed(ctx.EntryPoint) {
 		variables["step.id"] = stringType()
 		variables["step.key"] = stringType()
 		variables["step.type"] = enumValueType("step type", "command", "wait", "input", "trigger", "group")
@@ -314,6 +335,17 @@ func numberType() valueType {
 
 func boolType() valueType {
 	return valueType{kind: kindBool}
+}
+
+func nullableBoolType() valueType {
+	return valueType{kind: kindBool, nullable: true}
+}
+
+func boolTypeFor(value *bool) valueType {
+	if value == nil {
+		return nullableBoolType()
+	}
+	return boolType()
 }
 
 func stringArrayType() valueType {

@@ -84,6 +84,15 @@ func TestConditionalEvaluationSemantics(t *testing.T) {
 			want: true,
 		},
 		{
+			name:       "array includes enum string variable",
+			source:     docsConditionalsSource,
+			expression: `["passed", "failed"] includes build.state`,
+			ctx: Context{
+				Build: Build{State: str("passed")},
+			},
+			want: true,
+		},
+		{
 			name:       "documented started failing build state",
 			source:     docsConditionalsSource,
 			expression: `build.state == "started_failing"`,
@@ -178,6 +187,12 @@ func TestConditionalEvaluationSemantics(t *testing.T) {
 			source:     upstreamParserSpec,
 			expression: `true ? null : true`,
 			wantError:  ErrorKindResult,
+		},
+		{
+			name:       "nullable pull request boolean fails before logical evaluation",
+			source:     docsConditionalsSource,
+			expression: `build.pull_request.draft || false`,
+			wantError:  ErrorKindValidation,
 		},
 	}
 
