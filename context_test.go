@@ -555,6 +555,16 @@ func TestBuildkiteContextValidation(t *testing.T) {
 			ctx:        Context{EntryPoint: EntryPointBuildConditionWithStep},
 		},
 		{
+			name:       "pipeline name is not a server conditional variable",
+			source:     upstreamBuildConditionSpec,
+			expression: `pipeline.name == "Deploy"`,
+			ctx: Context{
+				EntryPoint: EntryPointBuildCondition,
+				Pipeline:   Pipeline{Name: str("Deploy")},
+			},
+			wantError: ErrorKindValidation,
+		},
+		{
 			name:       "literal unsupported Buildkite env is rejected",
 			source:     upstreamBuildConditionSpec,
 			expression: `build.env("BUILDKITE_AGENT_ACCESS_TOKEN") == null`,

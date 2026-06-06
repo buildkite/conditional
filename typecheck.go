@@ -301,7 +301,6 @@ func variableTypes(ctx Context) map[string]valueType {
 		"build.merge_queue.base_branch":       stringTypeFor(ctx.Build.MergeQueue.BaseBranch),
 		"build.merge_queue.base_commit":       stringTypeFor(ctx.Build.MergeQueue.BaseCommit),
 		"pipeline.id":                         stringTypeFor(ctx.Pipeline.ID),
-		"pipeline.name":                       stringTypeFor(ctx.Pipeline.Name),
 		"pipeline.slug":                       stringTypeFor(ctx.Pipeline.Slug),
 		"pipeline.default_branch":             stringTypeFor(ctx.Pipeline.DefaultBranch),
 		"pipeline.repository":                 stringTypeFor(ctx.Pipeline.Repository),

@@ -346,7 +346,6 @@ func flatAssignments(ctx Context) object.Struct {
 		"build.merge_queue.base_branch":      stringValue(build.MergeQueue.BaseBranch),
 		"build.merge_queue.base_commit":      stringValue(build.MergeQueue.BaseCommit),
 		"pipeline.id":                        stringValue(ctx.Pipeline.ID),
-		"pipeline.name":                      stringValue(ctx.Pipeline.Name),
 		"pipeline.slug":                      stringValue(ctx.Pipeline.Slug),
 		"pipeline.default_branch":            stringValue(ctx.Pipeline.DefaultBranch),
 		"pipeline.repository":                stringValue(ctx.Pipeline.Repository),
@@ -432,7 +431,6 @@ func actorObject(actor Actor, includeVerified bool) object.Struct {
 func pipelineObject(pipeline Pipeline) object.Struct {
 	return object.Struct{
 		"id":                         stringValue(pipeline.ID),
-		"name":                       stringValue(pipeline.Name),
 		"slug":                       stringValue(pipeline.Slug),
 		"default_branch":             stringValue(pipeline.DefaultBranch),
 		"repository":                 stringValue(pipeline.Repository),

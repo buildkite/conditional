@@ -292,6 +292,11 @@ are derived in-library when the server does so, such as `build.source_event`
 from `Build.SourceEvent` or `BUILDKITE_GITHUB_EVENT` when
 `Build.Source == "webhook"`.
 
+Some public context fields exist only to derive supported built-in environment
+values. For example, `Pipeline.Name` feeds
+`build.env("BUILDKITE_PIPELINE_NAME")`, but `pipeline.name` is not a server
+conditional variable and must fail validation.
+
 Environment merge behavior is part of the public contract:
 
 - `ProjectEnv` and `BuildEnv` are merged using server-compatible precedence.
@@ -865,6 +870,9 @@ Current Slice 5 progress:
   pipeline, organization, pull request, merge queue, triggered-from,
   rebuilt-from, pull request labels and merge-refspec state, and merge-queue
   git-diff-base fields.
+- `pipeline.name` has been removed from the conditional variable surface
+  because `Build::Condition` does not assign it; `Pipeline.Name` remains as
+  caller-provided data for `BUILDKITE_PIPELINE_NAME`.
 - `BUILDKITE_GIT_DIFF_BASE` is gated by explicit merge-queue build state, then
   uses either the merge queue base branch or base commit according to the
   pipeline provider setting.
