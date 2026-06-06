@@ -50,6 +50,37 @@ run. In pipeline YAML, escape `$` anchors to avoid interpolation; by the time th
 conditional is parsed, an end anchor should be a raw `$`. Regex escapes such as
 `\$` are preserved as literal-dollar matches.
 
+## Entrypoints
+
+Set `Context.EntryPoint` to the Buildkite location where the conditional runs:
+
+* `EntryPointBuildCondition` evaluates build conditionals without `step.*`.
+* `EntryPointBuildConditionWithStep` evaluates build conditionals where step
+  variables are available.
+* `EntryPointBuildNotification` evaluates build notification conditionals and
+  converts parse, validation, and evaluation errors to `false`.
+* `EntryPointStepNotification` evaluates step notification conditionals with
+  `step.*` variables and converts parse, validation, and evaluation errors to
+  `false`.
+
+## Variables
+
+The root API builds flat Buildkite assignments from `Context`:
+
+* `build.*` values come from `Context.Build`.
+* `pipeline.*` values come from `Context.Pipeline`.
+* `organization.*` values come from `Context.Organization`.
+* `step.*` values come from `Context.Step` only for step-aware entrypoints.
+* `env("NAME")` reads the merged build and project environment, returning an
+  empty string when the name is absent.
+* `build.env("NAME")` reads the same merged environment, returning `null` when
+  the name is absent.
+
+Missing documented nullable values evaluate as `null`. Unknown variables,
+unknown functions, unsupported `BUILDKITE_*` env names, invalid regular
+expressions, unsupported regular expression features, type mismatches, and
+non-boolean final results fail closed.
+
 ## Usage
 
 ```go
