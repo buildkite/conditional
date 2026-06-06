@@ -111,6 +111,15 @@ func TestConditionalEvaluationSemantics(t *testing.T) {
 			want: true,
 		},
 		{
+			name:       "documented started build state",
+			source:     docsConditionalsSource,
+			expression: `build.state == "started"`,
+			ctx: Context{
+				Build: Build{State: str("started")},
+			},
+			want: true,
+		},
+		{
 			name:       "enum comparison allows interpolated string literal",
 			source:     upstreamParserSpec,
 			expression: `build.state == "${STATE}"`,
@@ -234,6 +243,24 @@ func TestConditionalEvaluationSemantics(t *testing.T) {
 			source:     upstreamBuildValidatorSpec,
 			expression: `build.fixed`,
 			wantError:  ErrorKindResult,
+		},
+		{
+			name:       "nullable context string fails inside array literal",
+			source:     upstreamBuildValidatorSpec,
+			expression: `[build.tag] includes "v1.0"`,
+			wantError:  ErrorKindValidation,
+		},
+		{
+			name:       "nullable build env fails inside array literal",
+			source:     upstreamBuildValidatorSpec,
+			expression: `[build.env("MISSING")] includes "x"`,
+			wantError:  ErrorKindValidation,
+		},
+		{
+			name:       "nullable shell expansion fails inside array literal",
+			source:     upstreamBuildValidatorSpec,
+			expression: `[${notset}] includes "x"`,
+			wantError:  ErrorKindValidation,
 		},
 		{
 			name:       "nullable ternary result fails closed",

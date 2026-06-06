@@ -136,6 +136,12 @@ func TestConditionalSyntaxErrors(t *testing.T) {
 			wantError:  ErrorKindValidation,
 		},
 		{
+			name:       "validation rejects env backslash escaped dollar name",
+			source:     upstreamBuildConditionSpec,
+			expression: `env("\$FOO") == ""`,
+			wantError:  ErrorKindValidation,
+		},
+		{
 			name:       "validation rejects unknown variable",
 			source:     upstreamParserSpec,
 			expression: `not_a_variable == "x"`,

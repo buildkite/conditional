@@ -57,17 +57,31 @@ func ContainsShellTemplate(value string) bool {
 // ContainsShellExpansion reports whether a string contains a shell expression
 // whose value depends on runtime environment.
 func ContainsShellExpansion(value string) bool {
-	for i := 0; i < len(value); i++ {
-		if value[i] != '$' {
-			continue
-		}
-		if i+1 < len(value) && value[i+1] == '$' {
+	for i := 0; i < len(value); {
+		switch value[i] {
+		case '$':
+			if i+1 < len(value) && value[i+1] == '$' {
+				i += 2
+				continue
+			}
+			_, _, ok := readShellExpansion(value, i)
+			if ok {
+				return true
+			}
+			i++
+		case '\\':
+			next := i
+			for next < len(value) && value[next] == '\\' {
+				next++
+			}
+			if next < len(value) && value[next] == '$' && next == i+1 {
+				i = next + 1
+				continue
+			}
+			i = next
+		default:
 			i++
 			continue
-		}
-		_, _, ok := readShellExpansion(value, i)
-		if ok {
-			return true
 		}
 	}
 	return false

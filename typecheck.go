@@ -70,7 +70,7 @@ func (c typeChecker) check(expr ast.Expression) (valueType, error) {
 	case *ast.StringLiteral:
 		return valueType{kind: kindString}, nil
 	case *ast.ShellExpansion:
-		return valueType{kind: kindString}, nil
+		return nullableStringType(), nil
 	case *ast.Regexp:
 		return valueType{kind: kindRegexp}, nil
 	case *ast.Identifier:
@@ -322,59 +322,59 @@ func (c typeChecker) expectIncludesRight(expr ast.Expression) error {
 
 func variableTypes(ctx Context) map[string]valueType {
 	variables := map[string]valueType{
-		"build.id":                            stringType(),
-		"build.state":                         enumValueType("build state", "creating", "started", "running", "scheduled", "blocked", "passed", "failing", "failed", "started_failing", "canceling", "canceled", "skipped", "not_run"),
+		"build.id":                            stringTypeFor(ctx.Build.ID),
+		"build.state":                         enumValueTypeFor(ctx.Build.State, "build state", "creating", "started", "running", "scheduled", "blocked", "passed", "failing", "failed", "started_failing", "canceling", "canceled", "skipped", "not_run"),
 		"build.fixed":                         boolTypeFor(ctx.Build.Fixed),
-		"build.blocked_state":                 enumValueType("build blocked state", "failed", "passed", "running"),
-		"build.source":                        enumValueType("build source", "api", "ui", "webhook", "trigger_job", "schedule", "pipeline_trigger"),
-		"build.source_event":                  stringType(),
-		"build.source_action":                 stringType(),
-		"build.branch":                        stringType(),
-		"build.tag":                           stringType(),
-		"build.message":                       stringType(),
-		"build.commit":                        stringType(),
+		"build.blocked_state":                 enumValueTypeFor(ctx.Build.BlockedState, "build blocked state", "failed", "passed", "running"),
+		"build.source":                        enumValueTypeFor(ctx.Build.Source, "build source", "api", "ui", "webhook", "trigger_job", "schedule", "pipeline_trigger"),
+		"build.source_event":                  stringTypeFor(sourceEvent(ctx)),
+		"build.source_action":                 stringTypeFor(sourceAction(ctx)),
+		"build.branch":                        stringTypeFor(ctx.Build.Branch),
+		"build.tag":                           stringTypeFor(ctx.Build.Tag),
+		"build.message":                       stringTypeFor(ctx.Build.Message),
+		"build.commit":                        stringTypeFor(ctx.Build.Commit),
 		"build.number":                        numberType(),
-		"build.creator.id":                    stringType(),
-		"build.creator.name":                  stringType(),
-		"build.creator.email":                 stringType(),
-		"build.creator.teams":                 stringArrayType(),
+		"build.creator.id":                    stringTypeFor(ctx.Build.Creator.ID),
+		"build.creator.name":                  stringTypeFor(ctx.Build.Creator.Name),
+		"build.creator.email":                 stringTypeFor(ctx.Build.Creator.Email),
+		"build.creator.teams":                 stringArrayTypeFor(ctx.Build.Creator.Teams),
 		"build.creator.verified":              boolTypeFor(ctx.Build.Creator.Verified),
-		"build.author.id":                     stringType(),
-		"build.author.name":                   stringType(),
-		"build.author.email":                  stringType(),
-		"build.author.teams":                  stringArrayType(),
-		"build.scm.author.name":               stringType(),
-		"build.scm.author.email":              stringType(),
-		"build.scm.committer.name":            stringType(),
-		"build.scm.committer.email":           stringType(),
-		"build.pull_request.id":               stringType(),
-		"build.pull_request.base_branch":      stringType(),
+		"build.author.id":                     stringTypeFor(ctx.Build.Author.ID),
+		"build.author.name":                   stringTypeFor(ctx.Build.Author.Name),
+		"build.author.email":                  stringTypeFor(ctx.Build.Author.Email),
+		"build.author.teams":                  stringArrayTypeFor(ctx.Build.Author.Teams),
+		"build.scm.author.name":               stringTypeFor(ctx.Build.SCM.AuthorName),
+		"build.scm.author.email":              stringTypeFor(ctx.Build.SCM.AuthorEmail),
+		"build.scm.committer.name":            stringTypeFor(ctx.Build.SCM.CommitterName),
+		"build.scm.committer.email":           stringTypeFor(ctx.Build.SCM.CommitterEmail),
+		"build.pull_request.id":               stringTypeFor(ctx.Build.PullRequest.ID),
+		"build.pull_request.base_branch":      stringTypeFor(ctx.Build.PullRequest.BaseBranch),
 		"build.pull_request.draft":            boolTypeFor(ctx.Build.PullRequest.Draft),
-		"build.pull_request.label":            stringType(),
-		"build.pull_request.labels":           stringArrayType(),
-		"build.pull_request.repository":       stringType(),
+		"build.pull_request.label":            stringTypeFor(pullRequestLabel(ctx)),
+		"build.pull_request.labels":           stringArrayTypeFor(ctx.Build.PullRequest.Labels),
+		"build.pull_request.repository":       stringTypeFor(ctx.Build.PullRequest.Repository),
 		"build.pull_request.repository.fork":  boolTypeFor(ctx.Build.PullRequest.RepositoryFork),
-		"build.merge_queue.base_branch":       stringType(),
-		"build.merge_queue.base_commit":       stringType(),
-		"pipeline.id":                         stringType(),
-		"pipeline.name":                       stringType(),
-		"pipeline.slug":                       stringType(),
-		"pipeline.default_branch":             stringType(),
-		"pipeline.repository":                 stringType(),
+		"build.merge_queue.base_branch":       stringTypeFor(ctx.Build.MergeQueue.BaseBranch),
+		"build.merge_queue.base_commit":       stringTypeFor(ctx.Build.MergeQueue.BaseCommit),
+		"pipeline.id":                         stringTypeFor(ctx.Pipeline.ID),
+		"pipeline.name":                       stringTypeFor(ctx.Pipeline.Name),
+		"pipeline.slug":                       stringTypeFor(ctx.Pipeline.Slug),
+		"pipeline.default_branch":             stringTypeFor(ctx.Pipeline.DefaultBranch),
+		"pipeline.repository":                 stringTypeFor(ctx.Pipeline.Repository),
 		"pipeline.started_passing":            boolTypeFor(ctx.Pipeline.StartedPassing),
 		"pipeline.started_failing":            boolTypeFor(ctx.Pipeline.StartedFailing),
 		"pipeline.next_finished_build_exists": boolTypeFor(ctx.Pipeline.NextFinishedBuildExists),
-		"organization.id":                     stringType(),
-		"organization.slug":                   stringType(),
+		"organization.id":                     stringTypeFor(ctx.Organization.ID),
+		"organization.slug":                   stringTypeFor(ctx.Organization.Slug),
 	}
 
 	if stepAllowed(ctx.EntryPoint) {
-		variables["step.id"] = stringType()
-		variables["step.key"] = stringType()
-		variables["step.type"] = enumValueType("step type", "command", "wait", "input", "trigger", "group")
-		variables["step.label"] = stringType()
-		variables["step.state"] = enumValueType("step state", "ignored", "waiting_for_dependencies", "ready", "running", "failing", "finished")
-		variables["step.outcome"] = enumValueType("step outcome", "neutral", "passed", "soft_failed", "hard_failed", "errored")
+		variables["step.id"] = stringTypeFor(stepString(ctx.Step, func(step *Step) *string { return step.ID }))
+		variables["step.key"] = stringTypeFor(stepString(ctx.Step, func(step *Step) *string { return step.Key }))
+		variables["step.type"] = enumValueTypeFor(stepString(ctx.Step, func(step *Step) *string { return step.Type }), "step type", "command", "wait", "input", "trigger", "group")
+		variables["step.label"] = stringTypeFor(stepString(ctx.Step, func(step *Step) *string { return step.Label }))
+		variables["step.state"] = enumValueTypeFor(stepString(ctx.Step, func(step *Step) *string { return step.State }), "step state", "ignored", "waiting_for_dependencies", "ready", "running", "failing", "finished")
+		variables["step.outcome"] = enumValueTypeFor(stepString(ctx.Step, func(step *Step) *string { return step.Outcome }), "step outcome", "neutral", "passed", "soft_failed", "hard_failed", "errored")
 	}
 
 	return variables
@@ -388,13 +388,24 @@ func functionTypes() map[string]functionSignature {
 		},
 		"build.env": {
 			args: []valueKind{kindString},
-			ret:  stringType(),
+			ret:  nullableStringType(),
 		},
 	}
 }
 
 func stringType() valueType {
 	return valueType{kind: kindString}
+}
+
+func nullableStringType() valueType {
+	return valueType{kind: kindString, nullable: true}
+}
+
+func stringTypeFor(value *string) valueType {
+	if value == nil {
+		return nullableStringType()
+	}
+	return stringType()
 }
 
 func numberType() valueType {
@@ -420,6 +431,17 @@ func stringArrayType() valueType {
 	return valueType{kind: kindStringArray}
 }
 
+func nullableStringArrayType() valueType {
+	return valueType{kind: kindStringArray, nullable: true}
+}
+
+func stringArrayTypeFor(values []string) valueType {
+	if values == nil {
+		return nullableStringArrayType()
+	}
+	return stringArrayType()
+}
+
 func enumValueType(name string, values ...string) valueType {
 	set := make(map[string]struct{}, len(values))
 	for _, value := range values {
@@ -429,6 +451,21 @@ func enumValueType(name string, values ...string) valueType {
 		kind: kindString,
 		enum: &enumType{name: name, values: set},
 	}
+}
+
+func enumValueTypeFor(value *string, name string, values ...string) valueType {
+	typ := enumValueType(name, values...)
+	if value == nil {
+		typ.nullable = true
+	}
+	return typ
+}
+
+func stepString(step *Step, value func(*Step) *string) *string {
+	if step == nil {
+		return nil
+	}
+	return value(step)
 }
 
 func (t valueType) describe() string {
