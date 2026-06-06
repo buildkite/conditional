@@ -166,6 +166,29 @@ func TestFlatDottedIdentifier(t *testing.T) {
 	}
 }
 
+func TestNestedDottedIdentifierFallback(t *testing.T) {
+	scope := object.Struct{
+		"build": object.Struct{
+			"message": &object.String{Value: "deploy"},
+		},
+	}
+
+	evaluated := testEvalWithScope(`build.message == "deploy"`, scope)
+	testBooleanObject(t, evaluated, true)
+}
+
+func TestFlatDottedIdentifierTakesPrecedence(t *testing.T) {
+	scope := object.Struct{
+		"build.message": &object.String{Value: "flat"},
+		"build": object.Struct{
+			"message": &object.String{Value: "nested"},
+		},
+	}
+
+	evaluated := testEvalWithScope(`build.message == "flat"`, scope)
+	testBooleanObject(t, evaluated, true)
+}
+
 func TestFlatDottedIdentifierFailsOnMissingAssignment(t *testing.T) {
 	obj := testEvalWithScope(`foo.bar`, object.Struct{})
 
@@ -177,6 +200,19 @@ func TestFlatDottedIdentifierFailsOnMissingAssignment(t *testing.T) {
 	if result.Message != `identifier not found: foo.bar` {
 		t.Fatalf("bad error message: %v", result.Message)
 	}
+}
+
+func TestNestedDottedFunctionFallback(t *testing.T) {
+	scope := object.Struct{
+		"build": object.Struct{
+			"env": object.Function(func(args []object.Object) object.Object {
+				return &object.String{Value: "from-nested"}
+			}),
+		},
+	}
+
+	evaluated := testEvalWithScope(`build.env("FOO") == "from-nested"`, scope)
+	testBooleanObject(t, evaluated, true)
 }
 
 func TestContainsOperator(t *testing.T) {

@@ -2,6 +2,7 @@ package evaluator
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/buildkite/conditional/ast"
 	"github.com/buildkite/conditional/object"
@@ -79,7 +80,7 @@ func Eval(node ast.Node, scope Scope) object.Object {
 			return args[0]
 		}
 
-		obj, ok := scope.Get(node.Function)
+		obj, ok := resolveScopedName(node.Function, scope)
 		if !ok {
 			return newError("function not defined: %s", node.Function)
 		}
@@ -307,12 +308,43 @@ func evalArrayInfixExpression(operator string, left, right object.Object) object
 func evalIdentifier(node *ast.Identifier, scope Scope) object.Object {
 	// defer untrace(trace("evalIdentifier"))
 
-	val, ok := scope.Get(node.Value)
+	val, ok := resolveScopedName(node.Value, scope)
 	if !ok {
 		return newError("identifier not found: %s", node.Value)
 	}
 
 	return val
+}
+
+func resolveScopedName(name string, scope Scope) (object.Object, bool) {
+	if val, ok := scope.Get(name); ok {
+		return val, true
+	}
+
+	if !strings.Contains(name, ".") {
+		return nil, false
+	}
+
+	var current Scope = scope
+	parts := strings.Split(name, ".")
+	for i, part := range parts {
+		val, ok := current.Get(part)
+		if !ok {
+			return nil, false
+		}
+
+		if i == len(parts)-1 {
+			return val, true
+		}
+
+		next, ok := val.(Scope)
+		if !ok {
+			return nil, false
+		}
+		current = next
+	}
+
+	return nil, false
 }
 
 func newError(format string, a ...interface{}) *object.Error {
