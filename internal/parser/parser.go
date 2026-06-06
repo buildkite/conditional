@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/buildkite/conditional/ast"
-	"github.com/buildkite/conditional/lexer"
-	"github.com/buildkite/conditional/token"
+	"github.com/buildkite/conditional/internal/ast"
+	"github.com/buildkite/conditional/internal/lexer"
+	"github.com/buildkite/conditional/internal/token"
 	"github.com/dlclark/regexp2"
 )
 

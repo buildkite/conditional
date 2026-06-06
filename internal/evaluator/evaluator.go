@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/buildkite/conditional/ast"
-	"github.com/buildkite/conditional/object"
+	"github.com/buildkite/conditional/internal/ast"
+	"github.com/buildkite/conditional/internal/object"
 )
 
 var (

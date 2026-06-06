@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/buildkite/conditional/object"
+	"github.com/buildkite/conditional/internal/object"
 )
 
 var shellIntegerPattern = regexp.MustCompile(`^-?[0-9]+$`)

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/buildkite/conditional/token"
+	"github.com/buildkite/conditional/internal/token"
 	"github.com/dlclark/regexp2"
 )
 

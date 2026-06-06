@@ -480,14 +480,14 @@ from this plan.
 
 | Area | Current Behavior | Required Direction |
 | --- | --- | --- |
-| Dotted names | Parser and evaluator internals now use flat dotted identifiers for server variables. Some public implementation packages still expose older generic-language concepts during transition. | Finish removing nested object lookup assumptions and move implementation packages under `internal/` in the cleanup slice. |
+| Dotted names | Parser and evaluator internals now use flat dotted identifiers for server variables, and implementation packages are under `internal/`. | Finish auditing any remaining nested object lookup assumptions behind the root API. |
 | `build.env()` | `build.env("NAME")` parses as a flat function identifier, type-checks with the server's string return token type, evaluates to `null` for absent variables, and fails closed for blank or unsupported dynamic `BUILDKITE_*` names. | Expand validator and conformance coverage for the full server env matrix in Slice 5. |
 | Ternary syntax | Ternaries parse with server precedence, evaluate lazily, use Ruby truthiness for nil runtime conditions, and type-check branch compatibility without local nullable-union narrowing. | Expand conformance coverage for every upstream ternary type-checker case before marking Slice 4 complete. |
 | Shell substitution | Shell expansion operands, double-quoted interpolation, server string escapes, and quoted fallback strings evaluate for the upstream set/unset/empty/default/alternate/required/substring matrix and representative fallback grammar cases. | Run a final upstream parser/evaluator audit before marking every shell substitution group accounted for. |
-| Scope | Callers pass arbitrary `object.Struct`. | Add server-style Buildkite assignment tables with documented variables and context availability. |
+| Scope | Public callers pass `Context`; the root package builds an internal `object.Struct` assignment table. | Finish the exhaustive server-style Buildkite assignment matrix with documented variables and context availability. |
 | Nullable values | Documented nullable Buildkite assignments are present as runtime `null` while keeping their server-declared type for validation. Truly unknown variables still fail closed. | Finish the exhaustive context matrix and lazy variable coverage so every documented nullable field is covered in every entrypoint. |
 | Context restrictions | Root entrypoints now model build conditions, build conditions with a step, build notifications, and step notifications. `step.*` fails validation unless the entrypoint supplies a step, and notification entrypoints convert parse, validation, and evaluation errors to `false`. | Finish auditing entrypoint-specific docs/server differences, especially variables documented as notification-only but exposed by `Build::Condition.context`. |
-| Final result | Root `Validate`/`Evaluate` now type-check for a boolean final result; lower-level `Eval` still returns any `object.Object` during transition. | Move implementation packages under `internal/` and keep root `(bool, error)` as the supported Buildkite surface. |
+| Final result | Root `Validate`/`Evaluate` now type-check for a boolean final result; implementation-only `Eval` is internal and still returns `object.Object`. | Keep root `(bool, error)` as the supported Buildkite surface. |
 | Regex syntax | regexp2 accepts some features the server rejects. | Keep regexp2 only with a server-compatible validator for flags and unsupported constructs. |
 | Divergent operators | `@>` no longer tokenizes as a Buildkite parser operator, and the dead token/parser/root-validation compatibility artifacts have been removed. | Keep parser/root divergence tests so local-only syntax stays rejected. |
 | Type mismatch semantics | Core equality, regex matching, `includes`, `!`, logical, ternary, enum, null, array comparison, and concrete Buildkite function cases now use server-derived type-checking behavior. | Finish exact error category coverage and the remaining context-driven function cases. |
@@ -991,6 +991,9 @@ Current Slice 7 progress:
   lexer/parser/evaluator wiring.
 - Removed README examples that advertised `@>` compatibility, unavailable
   `meta-data("foo")`, and generic object/function syntax.
+- Moved implementation packages under `internal/`, including `ast`, `evaluator`,
+  `lexer`, `object`, `parser`, `repl`, and `token`, so the root package is the
+  supported public Buildkite API.
 
 ### Slice 8: Optional Server Oracle
 
