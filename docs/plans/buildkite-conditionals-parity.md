@@ -397,6 +397,9 @@ from this plan.
   double-quoted, and shell fallback strings. String tokens now keep both decoded
   values and raw source bodies so escaped dollars stay static while unescaped
   shell substitutions still evaluate through the Buildkite environment.
+- Runtime `env()` and `build.env()` calls now enforce the server's blank-name
+  and `BUILDKITE_*` allowlist checks after interpolation, so dynamic names fail
+  closed the same way static literal names do.
 - Some landed behavior is still explicitly provisional because it diverges from
   the server regex validator or still lacks exhaustive custom function/lazy
   variable coverage.
@@ -428,6 +431,10 @@ from this plan.
 - Shell fallback strings now decode server escapes, support nested single- and
   double-quoted fallback strings, and keep braces inside nested fallback quotes
   from closing the surrounding `${...}` expression.
+- `env()` and `build.env()` now reject blank dynamic names and unsupported
+  dynamic `BUILDKITE_*` names during evaluation. Notification entrypoints still
+  convert those evaluation errors to `false`, matching the server deliverability
+  paths.
 - Server-supported cases that the current implementation cannot pass are not
   added as skipped tests. They remain recorded in the manifest and known gaps
   until the parser, evaluator, context, and regex parity slices implement them.
@@ -440,7 +447,7 @@ from this plan.
 | Area | Current Behavior | Required Direction |
 | --- | --- | --- |
 | Dotted names | Parser and evaluator internals now use flat dotted identifiers for server variables. Some public implementation packages still expose older generic-language concepts during transition. | Finish removing nested object lookup assumptions and move implementation packages under `internal/` in the cleanup slice. |
-| `build.env()` | `build.env("NAME")` parses as a flat function identifier, type-checks with the server's string return token type, and evaluates to `null` for absent variables through the root adapter. | Expand validator and conformance coverage for the full server env matrix in Slice 5. |
+| `build.env()` | `build.env("NAME")` parses as a flat function identifier, type-checks with the server's string return token type, evaluates to `null` for absent variables, and fails closed for blank or unsupported dynamic `BUILDKITE_*` names. | Expand validator and conformance coverage for the full server env matrix in Slice 5. |
 | Ternary syntax | Ternaries parse with server precedence, evaluate lazily, use Ruby truthiness for nil runtime conditions, and type-check branch compatibility without local nullable-union narrowing. | Expand conformance coverage for every upstream ternary type-checker case before marking Slice 4 complete. |
 | Shell substitution | Shell expansion operands, double-quoted interpolation, server string escapes, and quoted fallback strings evaluate for the upstream set/unset/empty/default/alternate/required/substring matrix and representative fallback grammar cases. | Finish custom function/lazy variable coverage and expand the upstream parser/evaluator matrix until every shell substitution group is accounted for. |
 | Scope | Callers pass arbitrary `object.Struct`. | Add server-style Buildkite assignment tables with documented variables and context availability. |
@@ -787,6 +794,10 @@ Current Slice 4 progress:
   byte-oriented hex and octal escapes, out-of-range octal rejection, unknown
   double-quoted escapes, single-quoted `\\`/`\'`, escaped dollars, and braces
   inside nested quoted fallback strings.
+- Runtime environment function arguments now mirror the server after string
+  interpolation: blank names and unsupported `BUILDKITE_*` names produce
+  evaluation errors for build conditions and `false` for notification
+  deliverability checks, while dynamic custom names remain runtime lookups.
 - Remaining Slice 4 work before marking the slice landed: broader upstream
   type-checker cases for custom functions and lazy variables, plus a final pass
   over the upstream evaluator/parser groups to ensure no substitution grammar
