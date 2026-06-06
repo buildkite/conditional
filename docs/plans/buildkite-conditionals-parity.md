@@ -311,7 +311,8 @@ Environment merge behavior is part of the public contract:
 Implementation packages should have clear responsibilities:
 
 - `lexer` tokenizes the server grammar.
-- `parser` parses tokens into AST nodes and preserves source positions.
+- `parser` parses tokens into AST nodes. It does not preserve source positions;
+  position-aware diagnostics are outside the current parity goal.
 - `ast` models syntax, not evaluation policy.
 - `evaluator` evaluates a type-checked AST against a server-style context.
 - `object` or its replacement represents runtime values and type information.
@@ -549,9 +550,9 @@ Additional Go constraints:
 
 - Exported identifiers in the root package need doc comments and stable error
   behavior.
-- Error tests should use typed errors or error categories, plus source location
-  where meaningful. Do not couple the Go suite to every word of a Ruby error
-  unless exact message parity becomes a requirement.
+- Error tests should use typed errors or error categories. Do not couple the Go
+  suite to every word of a Ruby error unless exact message parity becomes a
+  requirement.
 - Test helper packages should stay small. Prefer local helper functions with
   `t.Helper()` over a custom testing framework.
 - Do not introduce abstractions just to mirror Ruby classes. Add them only when
@@ -580,9 +581,8 @@ Definition of done:
   teams, preferred emails, and nullable fields.
 - The exact `BuildEnv`/`ProjectEnv` merge order is documented from
   `Build::PipelineEnvironment`, not inferred from public docs.
-- Existing subpackages are either moved under `internal/` or a package migration
-  map is committed in this slice showing the exact follow-up move. The final
-  state remains internal implementation packages plus root public API.
+- Existing subpackages are moved under `internal/`. The final state remains
+  internal implementation packages plus root public API.
 - The upstream spec port manifest is committed with statuses for every upstream
   spec group listed above.
 - Add a small smoke test set through the root API for a passing expression, a
@@ -699,9 +699,8 @@ Definition of done:
   plan as the next implementation slice. Do not land permanently skipped parity
   tests.
 - Tests can assert parse errors, evaluation errors, and boolean results.
-- Test helpers assert errors by kind and location where meaningful, not by
-  brittle full-message string comparisons unless message parity is explicitly in
-  scope.
+- Test helpers assert errors by kind, not by brittle full-message string
+  comparisons unless message parity is explicitly in scope.
 - Existing unit tests still run through `mise run check`.
 - The helper makes parser errors visible; tests must not evaluate a nil or
   erroneous AST by accident.
@@ -1103,9 +1102,9 @@ Add these targeted checks as the plan lands:
 - Public entrypoints are derived from reachable server paths:
   `Build::Condition` without step, `Build::Condition` with step,
   `Build::Notification#deliverable?`, and `Step::Notification#deliverable?`.
-- Error parity means exact accept/reject behavior, stable Go error categories,
-  and source location where meaningful. Byte-for-byte Ruby error text is not a
-  requirement for the first parity release.
+- Error parity means exact accept/reject behavior and stable Go error
+  categories. Byte-for-byte Ruby error text and source locations are not
+  requirements for the first parity release.
 - The library should derive pure conditional values, such as `source_event` from
   supplied environment data, but callers must provide database-backed facts such
   as visible teams and preferred emails.
@@ -1118,8 +1117,8 @@ Add these targeted checks as the plan lands:
 
 ## Deferred Work
 
-- Byte-for-byte error text if the first release can provide stable typed errors,
-  source locations, and exact accept/reject behavior.
+- Byte-for-byte error text if the first release can provide stable typed errors
+  and exact accept/reject behavior.
 
 ## Key Learnings From Pressure-Testing
 
