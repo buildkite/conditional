@@ -265,59 +265,10 @@ func (c typeChecker) expectIncludesRight(expr ast.Expression) error {
 }
 
 func variableTypes(ctx Context) map[string]valueType {
-	variables := map[string]valueType{
-		"build.id":                            stringTypeFor(ctx.Build.ID),
-		"build.state":                         enumValueTypeFor(ctx.Build.State, "build state", "creating", "started", "running", "scheduled", "blocked", "passed", "failing", "failed", "canceling", "canceled", "skipped", "not_run"),
-		"build.fixed":                         boolTypeFor(ctx.Build.Fixed),
-		"build.blocked_state":                 enumValueTypeFor(ctx.Build.BlockedState, "build blocked state", "failed", "passed", "running"),
-		"build.source":                        enumValueTypeFor(ctx.Build.Source, "build source", "api", "ui", "webhook", "trigger_job", "schedule", "pipeline_trigger"),
-		"build.source_event":                  stringTypeFor(sourceEvent(ctx)),
-		"build.source_action":                 stringTypeFor(sourceAction(ctx)),
-		"build.branch":                        stringTypeFor(ctx.Build.Branch),
-		"build.tag":                           stringTypeFor(ctx.Build.Tag),
-		"build.message":                       stringTypeFor(ctx.Build.Message),
-		"build.commit":                        stringTypeFor(ctx.Build.Commit),
-		"build.number":                        numberType(),
-		"build.creator.id":                    stringTypeFor(ctx.Build.Creator.ID),
-		"build.creator.name":                  stringTypeFor(ctx.Build.Creator.Name),
-		"build.creator.email":                 stringTypeFor(ctx.Build.Creator.Email),
-		"build.creator.teams":                 stringArrayTypeFor(ctx.Build.Creator.Teams),
-		"build.creator.verified":              boolTypeFor(ctx.Build.Creator.Verified),
-		"build.author.id":                     stringTypeFor(ctx.Build.Author.ID),
-		"build.author.name":                   stringTypeFor(ctx.Build.Author.Name),
-		"build.author.email":                  stringTypeFor(ctx.Build.Author.Email),
-		"build.author.teams":                  stringArrayTypeFor(ctx.Build.Author.Teams),
-		"build.scm.author.name":               stringTypeFor(ctx.Build.SCM.AuthorName),
-		"build.scm.author.email":              stringTypeFor(ctx.Build.SCM.AuthorEmail),
-		"build.scm.committer.name":            stringTypeFor(ctx.Build.SCM.CommitterName),
-		"build.scm.committer.email":           stringTypeFor(ctx.Build.SCM.CommitterEmail),
-		"build.pull_request.id":               stringTypeFor(ctx.Build.PullRequest.ID),
-		"build.pull_request.base_branch":      stringTypeFor(ctx.Build.PullRequest.BaseBranch),
-		"build.pull_request.draft":            boolTypeFor(ctx.Build.PullRequest.Draft),
-		"build.pull_request.label":            stringTypeFor(pullRequestLabel(ctx)),
-		"build.pull_request.labels":           stringArrayTypeFor(ctx.Build.PullRequest.Labels),
-		"build.pull_request.repository":       stringTypeFor(ctx.Build.PullRequest.Repository),
-		"build.pull_request.repository.fork":  boolTypeFor(ctx.Build.PullRequest.RepositoryFork),
-		"build.merge_queue.base_branch":       stringTypeFor(ctx.Build.MergeQueue.BaseBranch),
-		"build.merge_queue.base_commit":       stringTypeFor(ctx.Build.MergeQueue.BaseCommit),
-		"pipeline.id":                         stringTypeFor(ctx.Pipeline.ID),
-		"pipeline.slug":                       stringTypeFor(ctx.Pipeline.Slug),
-		"pipeline.default_branch":             stringTypeFor(ctx.Pipeline.DefaultBranch),
-		"pipeline.repository":                 stringTypeFor(ctx.Pipeline.Repository),
-		"pipeline.started_passing":            boolTypeFor(ctx.Pipeline.StartedPassing),
-		"pipeline.started_failing":            boolTypeFor(ctx.Pipeline.StartedFailing),
-		"pipeline.next_finished_build_exists": boolTypeFor(ctx.Pipeline.NextFinishedBuildExists),
-		"organization.id":                     stringTypeFor(ctx.Organization.ID),
-		"organization.slug":                   stringTypeFor(ctx.Organization.Slug),
-	}
-
-	if stepAllowed(ctx.EntryPoint) {
-		variables["step.id"] = stringTypeFor(stepString(ctx.Step, func(step *Step) *string { return step.ID }))
-		variables["step.key"] = stringTypeFor(stepString(ctx.Step, func(step *Step) *string { return step.Key }))
-		variables["step.type"] = enumValueTypeFor(stepString(ctx.Step, func(step *Step) *string { return step.Type }), "step type", "command", "wait", "input", "trigger", "group")
-		variables["step.label"] = stringTypeFor(stepString(ctx.Step, func(step *Step) *string { return step.Label }))
-		variables["step.state"] = enumValueTypeFor(stepString(ctx.Step, func(step *Step) *string { return step.State }), "step state", "ignored", "waiting_for_dependencies", "ready", "waiting_for_input", "running", "failing", "canceled", "finished")
-		variables["step.outcome"] = enumValueTypeFor(stepString(ctx.Step, func(step *Step) *string { return step.Outcome }), "step outcome", "neutral", "passed", "soft_failed", "hard_failed", "errored")
+	definitions := assignmentDefinitions(ctx)
+	variables := make(map[string]valueType, len(definitions))
+	for _, definition := range definitions {
+		variables[definition.name] = definition.typ
 	}
 
 	return variables
@@ -340,10 +291,6 @@ func stringType() valueType {
 	return valueType{kind: kindString}
 }
 
-func stringTypeFor(value *string) valueType {
-	return stringType()
-}
-
 func numberType() valueType {
 	return valueType{kind: kindNumber}
 }
@@ -352,16 +299,8 @@ func boolType() valueType {
 	return valueType{kind: kindBool}
 }
 
-func boolTypeFor(value *bool) valueType {
-	return boolType()
-}
-
 func stringArrayType() valueType {
 	return valueType{kind: kindStringArray}
-}
-
-func stringArrayTypeFor(values []string) valueType {
-	return stringArrayType()
 }
 
 func enumValueType(name string, values ...string) valueType {
@@ -373,10 +312,6 @@ func enumValueType(name string, values ...string) valueType {
 		kind: kindString,
 		enum: &enumType{name: name, values: set},
 	}
-}
-
-func enumValueTypeFor(value *string, name string, values ...string) valueType {
-	return enumValueType(name, values...)
 }
 
 func stepString(step *Step, value func(*Step) *string) *string {

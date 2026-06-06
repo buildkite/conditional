@@ -22,14 +22,12 @@ func BenchmarkSingleTokenEvaluation(bench *testing.B) {
 }
 
 func BenchmarkSimpleEvaluation(bench *testing.B) {
-	l := lexer.New(`build.branch == master" && build.pull_request == true`)
+	l := lexer.New(`build.branch == "master" && build.pull_request.draft == true`)
 	p := parser.New(l)
 	expr := p.Parse()
 	env := &object.Struct{
-		`build`: &object.Struct{
-			`branch`:       &object.String{Value: "master"},
-			`pull_request`: &object.Boolean{Value: true},
-		},
+		`build.branch`:             &object.String{Value: "master"},
+		`build.pull_request.draft`: &object.Boolean{Value: true},
 	}
 	bench.ResetTimer()
 
