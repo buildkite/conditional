@@ -119,6 +119,9 @@ func validateEnvCalls(expr ast.Expression) error {
 		if err := validateEnvCalls(expr.Left); err != nil {
 			return err
 		}
+		if logicalExpressionShortCircuits(expr) {
+			return nil
+		}
 		return validateEnvCalls(expr.Right)
 	case *ast.CallExpression:
 		if expr.Function == "env" || expr.Function == "build.env" {
@@ -128,7 +131,7 @@ func validateEnvCalls(expr ast.Expression) error {
 					Message: fmt.Sprintf("%s expects exactly one argument", expr.Function),
 				}
 			}
-			if arg, ok := expr.Arguments[0].(*ast.StringLiteral); ok {
+			if arg, ok := expr.Arguments[0].(*ast.StringLiteral); ok && !runtimeStringLiteral(arg) {
 				switch {
 				case strings.HasPrefix(arg.Value, "$"):
 					return &Error{
@@ -182,6 +185,9 @@ func validateOperators(expr ast.Expression) error {
 		}
 		if err := validateOperators(expr.Left); err != nil {
 			return err
+		}
+		if logicalExpressionShortCircuits(expr) {
+			return nil
 		}
 		return validateOperators(expr.Right)
 	case *ast.CallExpression:

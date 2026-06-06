@@ -32,7 +32,7 @@ func evalShellExpansion(raw string, scope Scope) object.Object {
 }
 
 func evalStringLiteral(value string, quote string, scope Scope) object.Object {
-	if quote != `"` || !containsShellTemplate(value) {
+	if quote != `"` || !ContainsShellTemplate(value) {
 		return &object.String{Value: value}
 	}
 
@@ -48,7 +48,9 @@ func evalStringLiteral(value string, quote string, scope Scope) object.Object {
 	return &object.String{Value: out}
 }
 
-func containsShellTemplate(value string) bool {
+// ContainsShellTemplate reports whether a double-quoted string can produce a
+// different runtime value after shell-style expansion.
+func ContainsShellTemplate(value string) bool {
 	return strings.Contains(value, "$$") || containsShellExpansion(value)
 }
 
@@ -70,8 +72,17 @@ func evalShellRaw(raw string, env EnvScope) (string, bool, error) {
 		return evalBracedShell(raw[2:len(raw)-1], env)
 	}
 	if strings.HasPrefix(raw, "$") {
-		name := raw[1:]
+		name, rest, ok := splitShellName(raw[1:])
+		if !ok {
+			return "", false, fmt.Errorf("invalid shell expansion: %s", raw)
+		}
 		value, ok := env.LookupEnv(name)
+		if rest != "" {
+			if !ok {
+				value = ""
+			}
+			return value + rest, true, nil
+		}
 		return value, ok, nil
 	}
 	return "", false, fmt.Errorf("invalid shell expansion: %s", raw)

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/buildkite/conditional/ast"
+	"github.com/buildkite/conditional/evaluator"
 )
 
 type valueKind string
@@ -126,7 +127,14 @@ func (c typeChecker) checkInfix(expr *ast.InfixExpression) (valueType, error) {
 		if err := c.expect(expr.Left, kindBool); err != nil {
 			return valueType{kind: kindUnknown}, err
 		}
-		if err := c.expect(expr.Right, kindBool); err != nil {
+		if logicalExpressionShortCircuits(expr) {
+			return valueType{kind: kindBool}, nil
+		}
+		rightChecker := c
+		if name, ok := nonNullGuardForRHS(expr.Operator, expr.Left); ok {
+			rightChecker = c.withNonNullableVariable(name)
+		}
+		if err := rightChecker.expect(expr.Right, kindBool); err != nil {
 			return valueType{kind: kindUnknown}, err
 		}
 		return valueType{kind: kindBool}, nil
@@ -144,7 +152,7 @@ func (c typeChecker) checkConditional(expr *ast.ConditionalExpression) (valueTyp
 	if err := c.expect(expr.Condition, kindBool); err != nil {
 		return valueType{kind: kindUnknown}, err
 	}
-	return c.checkComparisonTypes(expr.Consequence, expr.Alternative)
+	return c.checkCompatibleTypes(expr.Consequence, expr.Alternative, true)
 }
 
 func (c typeChecker) checkCall(expr *ast.CallExpression) (valueType, error) {
@@ -169,6 +177,10 @@ func (c typeChecker) checkCall(expr *ast.CallExpression) (valueType, error) {
 }
 
 func (c typeChecker) checkComparisonTypes(left, right ast.Expression) (valueType, error) {
+	return c.checkCompatibleTypes(left, right, false)
+}
+
+func (c typeChecker) checkCompatibleTypes(left, right ast.Expression, allowArrays bool) (valueType, error) {
 	leftType, err := c.check(left)
 	if err != nil {
 		return valueType{kind: kindUnknown}, err
@@ -178,10 +190,10 @@ func (c typeChecker) checkComparisonTypes(left, right ast.Expression) (valueType
 	if err != nil {
 		return valueType{kind: kindUnknown}, err
 	}
-	if leftType.kind == kindStringArray {
+	if !allowArrays && leftType.kind == kindStringArray {
 		return valueType{kind: kindUnknown}, validationError("unexpected type: expected scalar comparison operand but found %s", leftType.describe())
 	}
-	if rightType.kind == kindStringArray {
+	if !allowArrays && rightType.kind == kindStringArray {
 		return valueType{kind: kindUnknown}, validationError("unexpected type: expected scalar comparison operand but found %s", rightType.describe())
 	}
 	if leftType.kind == kindNull || leftType.kind == kindUnknown {
@@ -190,18 +202,24 @@ func (c typeChecker) checkComparisonTypes(left, right ast.Expression) (valueType
 	if rightType.kind == kindNull || rightType.kind == kindUnknown {
 		return leftType.withNull(), nil
 	}
+	if leftType.kind == kindStringArray || rightType.kind == kindStringArray {
+		if leftType.kind != rightType.kind {
+			return valueType{kind: kindUnknown}, validationError("unexpected type: expected %s but found %s", leftType.describe(), rightType.describe())
+		}
+		return leftType.withNullabilityFrom(rightType), nil
+	}
 	if leftType.enum != nil {
 		if err := c.expectAny(right, kindString, kindNull); err != nil {
 			return valueType{kind: kindUnknown}, err
 		}
-		if literal, ok := right.(*ast.StringLiteral); ok && !leftType.enum.includes(literal.Value) {
+		if literal, ok := staticStringLiteral(right); ok && !leftType.enum.includes(literal.Value) {
 			return valueType{kind: kindUnknown}, validationError("%q is not a valid `%s`", literal.Value, identifierName(left))
 		}
 		return leftType.withNullabilityFrom(rightType), nil
 	}
 
 	if rightType.enum != nil && leftType.kind == kindString {
-		if literal, ok := left.(*ast.StringLiteral); ok && !rightType.enum.includes(literal.Value) {
+		if literal, ok := staticStringLiteral(left); ok && !rightType.enum.includes(literal.Value) {
 			return valueType{kind: kindUnknown}, validationError("%q is not a valid `%s`", literal.Value, identifierName(right))
 		}
 		return rightType.withNullabilityFrom(leftType), nil
@@ -211,6 +229,22 @@ func (c typeChecker) checkComparisonTypes(left, right ast.Expression) (valueType
 		return valueType{kind: kindUnknown}, err
 	}
 	return leftType.withNullabilityFrom(rightType), nil
+}
+
+func (c typeChecker) withNonNullableVariable(name string) typeChecker {
+	typ, ok := c.variables[name]
+	if !ok || !typ.nullable {
+		return c
+	}
+
+	variables := make(map[string]valueType, len(c.variables))
+	for key, value := range c.variables {
+		variables[key] = value
+	}
+	typ.nullable = false
+	variables[name] = typ
+	c.variables = variables
+	return c
 }
 
 func (c typeChecker) expect(expr ast.Expression, expected valueKind) error {
@@ -427,6 +461,56 @@ func containsKind(kinds []valueKind, target valueKind) bool {
 		}
 	}
 	return false
+}
+
+func runtimeStringLiteral(literal *ast.StringLiteral) bool {
+	return literal.Token.Flags == `"` && evaluator.ContainsShellTemplate(literal.Value)
+}
+
+func staticStringLiteral(expr ast.Expression) (*ast.StringLiteral, bool) {
+	literal, ok := expr.(*ast.StringLiteral)
+	if !ok || runtimeStringLiteral(literal) {
+		return nil, false
+	}
+	return literal, true
+}
+
+func logicalExpressionShortCircuits(expr *ast.InfixExpression) bool {
+	left, ok := expr.Left.(*ast.Boolean)
+	if !ok {
+		return false
+	}
+
+	return (expr.Operator == "&&" && !left.Value) || (expr.Operator == "||" && left.Value)
+}
+
+func nonNullGuardForRHS(operator string, left ast.Expression) (string, bool) {
+	guard, ok := left.(*ast.InfixExpression)
+	if !ok {
+		return "", false
+	}
+	switch {
+	case operator == "&&" && guard.Operator == "!=":
+		return nullComparedIdentifier(guard.Left, guard.Right)
+	case operator == "||" && guard.Operator == "==":
+		return nullComparedIdentifier(guard.Left, guard.Right)
+	default:
+		return "", false
+	}
+}
+
+func nullComparedIdentifier(left, right ast.Expression) (string, bool) {
+	if _, ok := right.(*ast.Null); ok {
+		if ident, ok := left.(*ast.Identifier); ok {
+			return ident.Value, true
+		}
+	}
+	if _, ok := left.(*ast.Null); ok {
+		if ident, ok := right.(*ast.Identifier); ok {
+			return ident.Value, true
+		}
+	}
+	return "", false
 }
 
 func identifierName(expr ast.Expression) string {

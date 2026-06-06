@@ -102,6 +102,16 @@ func TestConditionalEvaluationSemantics(t *testing.T) {
 			want: true,
 		},
 		{
+			name:       "enum comparison allows interpolated string literal",
+			source:     upstreamParserSpec,
+			expression: `build.state == "${STATE}"`,
+			ctx: Context{
+				Build:    Build{State: str("passed")},
+				BuildEnv: map[string]string{"STATE": "passed"},
+			},
+			want: true,
+		},
+		{
 			name:       "valid enum comparison can put literal first",
 			source:     upstreamParserSpec,
 			expression: `"passed" == build.state`,
@@ -141,6 +151,18 @@ func TestConditionalEvaluationSemantics(t *testing.T) {
 			want:       true,
 		},
 		{
+			name:       "logical and short-circuits missing variable validation",
+			source:     upstreamEvaluatorSpec,
+			expression: `false && missing.value == "x"`,
+			want:       false,
+		},
+		{
+			name:       "logical or short-circuits missing variable validation",
+			source:     upstreamEvaluatorSpec,
+			expression: `true || missing.value == "x"`,
+			want:       true,
+		},
+		{
 			name:       "nested precedence with and before or",
 			source:     upstreamParserSpec,
 			expression: `"a" == "d" || "a" == "b" && "a" == "a"`,
@@ -168,6 +190,13 @@ func TestConditionalEvaluationSemantics(t *testing.T) {
 			name:       "nested ternary is right associative",
 			source:     upstreamEvaluatorSpec,
 			expression: `false ? true : false ? true : true`,
+			want:       true,
+		},
+		{
+			name:       "ternary array branch can feed includes",
+			source:     upstreamEvaluatorSpec,
+			expression: `(env("USE_CREATOR") == "true" ? build.creator.teams : ["deploy"]) includes "deploy"`,
+			ctx:        Context{BuildEnv: map[string]string{"USE_CREATOR": "false"}},
 			want:       true,
 		},
 		{
@@ -201,6 +230,12 @@ func TestConditionalEvaluationSemantics(t *testing.T) {
 			want:       true,
 		},
 		{
+			name:       "nullable pull request boolean can be guarded before logical evaluation",
+			source:     docsConditionalsSource,
+			expression: `build.pull_request.draft != null && build.pull_request.draft`,
+			want:       false,
+		},
+		{
 			name:       "nullable pull request boolean fails before logical evaluation",
 			source:     docsConditionalsSource,
 			expression: `build.pull_request.draft || false`,
@@ -226,6 +261,13 @@ func TestConditionalShellSubstitutionEvaluation(t *testing.T) {
 			name:       "bare shell variable",
 			source:     upstreamEvaluatorSpec,
 			expression: `$branch == "main"`,
+			ctx:        ctx,
+			want:       true,
+		},
+		{
+			name:       "bare shell variable preserves dotted suffix",
+			source:     upstreamEvaluatorSpec,
+			expression: `$branch.deploy == "main.deploy"`,
 			ctx:        ctx,
 			want:       true,
 		},
