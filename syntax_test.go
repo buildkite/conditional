@@ -123,6 +123,60 @@ func TestConditionalSyntaxErrors(t *testing.T) {
 			expression: `build.env("FOO", "BAR") == null`,
 			wantError:  ErrorKindValidation,
 		},
+		{
+			name:       "validation rejects env non string argument",
+			source:     upstreamParserSpec,
+			expression: `env(1) == ""`,
+			wantError:  ErrorKindValidation,
+		},
+		{
+			name:       "validation rejects unknown variable",
+			source:     upstreamParserSpec,
+			expression: `not_a_variable == "x"`,
+			wantError:  ErrorKindValidation,
+		},
+		{
+			name:       "validation rejects unknown function",
+			source:     upstreamParserSpec,
+			expression: `not_a_function() == "x"`,
+			wantError:  ErrorKindValidation,
+		},
+		{
+			name:       "validation rejects regex with non regexp rhs",
+			source:     upstreamParserSpec,
+			expression: `"d" =~ "hello"`,
+			wantError:  ErrorKindValidation,
+		},
+		{
+			name:       "validation rejects regex with boolean lhs",
+			source:     upstreamParserSpec,
+			expression: `true =~ /true/`,
+			wantError:  ErrorKindValidation,
+		},
+		{
+			name:       "validation rejects mismatched equality types",
+			source:     upstreamParserSpec,
+			expression: `1 == "one"`,
+			wantError:  ErrorKindValidation,
+		},
+		{
+			name:       "validation rejects boolean string comparison",
+			source:     upstreamParserSpec,
+			expression: `true == "true"`,
+			wantError:  ErrorKindValidation,
+		},
+		{
+			name:       "validation rejects includes on non array",
+			source:     upstreamParserSpec,
+			expression: `"not-an-array" includes "one"`,
+			wantError:  ErrorKindValidation,
+		},
+		{
+			name:       "validation rejects invalid enum literal",
+			source:     upstreamBuildConditionSpec,
+			expression: `build.state == "faillled"`,
+			wantError:  ErrorKindValidation,
+		},
 	}
 
 	runValidateCases(t, tests)

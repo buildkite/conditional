@@ -73,15 +73,44 @@ func TestConditionalEvaluationSemantics(t *testing.T) {
 			want:       false,
 		},
 		{
-			name:       "logical and short-circuits false left side",
+			name:       "array includes regex",
 			source:     upstreamEvaluatorSpec,
-			expression: `false && missing.value == "x"`,
+			expression: `build.creator.teams includes /dep/`,
+			ctx: Context{
+				Build: Build{
+					Creator: Actor{Teams: []string{"deploy", "platform"}},
+				},
+			},
+			want: true,
+		},
+		{
+			name:       "null includes string evaluates false",
+			source:     upstreamEvaluatorSpec,
+			expression: `null includes "fruit"`,
 			want:       false,
 		},
 		{
-			name:       "logical or short-circuits true left side",
+			name:       "null regex match evaluates false",
 			source:     upstreamEvaluatorSpec,
-			expression: `true || missing.value == "x"`,
+			expression: `null =~ /main|development/`,
+			want:       false,
+		},
+		{
+			name:       "null regex non match evaluates true",
+			source:     upstreamEvaluatorSpec,
+			expression: `null !~ /main|development/`,
+			want:       true,
+		},
+		{
+			name:       "logical and short-circuits failing shell expansion",
+			source:     upstreamEvaluatorSpec,
+			expression: `false && ${notset:?} == "x"`,
+			want:       false,
+		},
+		{
+			name:       "logical or short-circuits failing shell expansion",
+			source:     upstreamEvaluatorSpec,
+			expression: `true || ${notset:?} == "x"`,
 			want:       true,
 		},
 		{
@@ -118,13 +147,155 @@ func TestConditionalEvaluationSemantics(t *testing.T) {
 			name:       "missing variable fails closed",
 			source:     upstreamBuildConditionSpec,
 			expression: `missing.value == "x"`,
-			wantError:  ErrorKindEvaluation,
+			wantError:  ErrorKindValidation,
 		},
 		{
 			name:       "non boolean result fails closed",
 			source:     upstreamBuildValidatorSpec,
 			expression: `"not boolean"`,
 			wantError:  ErrorKindResult,
+		},
+	}
+
+	runEvaluateCases(t, tests)
+}
+
+func TestConditionalShellSubstitutionEvaluation(t *testing.T) {
+	ctx := Context{
+		BuildEnv: map[string]string{
+			"branch": "main",
+			"empty":  "",
+			"tag":    "foo",
+			"two":    "2",
+		},
+	}
+
+	tests := []evaluateCase{
+		{
+			name:       "bare shell variable",
+			source:     upstreamEvaluatorSpec,
+			expression: `$branch == "main"`,
+			ctx:        ctx,
+			want:       true,
+		},
+		{
+			name:       "braced shell variable",
+			source:     upstreamEvaluatorSpec,
+			expression: `${branch} == "main"`,
+			ctx:        ctx,
+			want:       true,
+		},
+		{
+			name:       "unset shell variable is null",
+			source:     upstreamEvaluatorSpec,
+			expression: `${notset} == null`,
+			ctx:        ctx,
+			want:       true,
+		},
+		{
+			name:       "required unset shell variable fails",
+			source:     upstreamEvaluatorSpec,
+			expression: `${notset:?} == "error"`,
+			ctx:        ctx,
+			wantError:  ErrorKindEvaluation,
+		},
+		{
+			name:       "dash default uses set value",
+			source:     upstreamEvaluatorSpec,
+			expression: `${branch-xx} == "main"`,
+			ctx:        ctx,
+			want:       true,
+		},
+		{
+			name:       "dash default uses fallback for unset",
+			source:     upstreamEvaluatorSpec,
+			expression: `${notset-xx} == "xx"`,
+			ctx:        ctx,
+			want:       true,
+		},
+		{
+			name:       "plus alternate uses alternate for set",
+			source:     upstreamEvaluatorSpec,
+			expression: `${branch+xx} == "xx"`,
+			ctx:        ctx,
+			want:       true,
+		},
+		{
+			name:       "plus alternate returns empty for unset",
+			source:     upstreamEvaluatorSpec,
+			expression: `${notset+xx} == ""`,
+			ctx:        ctx,
+			want:       true,
+		},
+		{
+			name:       "colon dash treats empty as unset",
+			source:     upstreamEvaluatorSpec,
+			expression: `${empty:-xx} == "xx"`,
+			ctx:        ctx,
+			want:       true,
+		},
+		{
+			name:       "colon plus treats empty as unset",
+			source:     upstreamEvaluatorSpec,
+			expression: `${empty:+xx} == ""`,
+			ctx:        ctx,
+			want:       true,
+		},
+		{
+			name:       "substring literal offsets",
+			source:     upstreamEvaluatorSpec,
+			expression: `${branch:1:2} == "ai"`,
+			ctx:        ctx,
+			want:       true,
+		},
+		{
+			name:       "substring variable length",
+			source:     upstreamEvaluatorSpec,
+			expression: `${branch:2:$two} == "in"`,
+			ctx:        ctx,
+			want:       true,
+		},
+		{
+			name:       "substring nested expressions",
+			source:     upstreamEvaluatorSpec,
+			expression: `${branch:${empty:-1}:${two+2}} == "ai"`,
+			ctx:        ctx,
+			want:       true,
+		},
+		{
+			name:       "substring past end returns empty",
+			source:     upstreamEvaluatorSpec,
+			expression: `${branch:25:2} == ""`,
+			ctx:        ctx,
+			want:       true,
+		},
+		{
+			name:       "substring rejects non integer length",
+			source:     upstreamEvaluatorSpec,
+			expression: `${branch:3:$tag} == "error"`,
+			ctx:        ctx,
+			wantError:  ErrorKindEvaluation,
+		},
+		{
+			name:       "double quoted strings interpolate shell variables",
+			source:     upstreamEvaluatorSpec,
+			expression: `"${branch}" == "main"`,
+			ctx:        ctx,
+			want:       true,
+		},
+		{
+			name:       "double dollar becomes literal dollar in double quoted strings",
+			source:     upstreamParserSpec,
+			expression: `"cost $$5" == "cost $5"`,
+			ctx:        ctx,
+			want:       true,
+		},
+		{
+			name:       "single quoted strings do not interpolate shell variables",
+			source:     upstreamEvaluatorSpec,
+			expression: `'${branch}' == "main"`,
+			ctx:        ctx,
+			want:       false,
 		},
 	}
 

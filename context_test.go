@@ -377,7 +377,7 @@ func TestBuildkiteContextValidation(t *testing.T) {
 			source:     upstreamBuildValidatorSpec,
 			expression: "lol",
 			ctx:        Context{EntryPoint: EntryPointBuildCondition},
-			wantError:  ErrorKindEvaluation,
+			wantError:  ErrorKindValidation,
 		},
 		{
 			name:       "step variables rejected without step option",

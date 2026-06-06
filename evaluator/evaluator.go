@@ -29,13 +29,13 @@ func Eval(node ast.Node, scope Scope) object.Object {
 		return &object.Integer{Value: node.Value}
 
 	case *ast.StringLiteral:
-		return &object.String{Value: node.Value}
+		return evalStringLiteral(node.Value, node.Token.Flags, scope)
 
 	case *ast.Regexp:
 		return &object.Regexp{Regexp: node.Regexp, Flags: node.Flags}
 
 	case *ast.ShellExpansion:
-		return newError("shell expansion evaluation is not implemented: %s", node.Raw)
+		return evalShellExpansion(node.Raw, scope)
 
 	case *ast.Boolean:
 		return nativeBoolToBooleanObject(node.Value)
@@ -158,8 +158,12 @@ func evalInfixExpression(operator string, left, right object.Object) object.Obje
 		return evalStringInfixExpression(operator, left, right)
 	case left.Type() == object.STRING_OBJ && right.Type() == object.REGEXP_OBJ:
 		return evalStringRegexpInfixExpression(operator, left, right)
+	case left.Type() == object.NULL_OBJ && right.Type() == object.REGEXP_OBJ:
+		return evalNullRegexpInfixExpression(operator, left, right)
 	case left.Type() == object.ARRAY_OBJ:
 		return evalArrayInfixExpression(operator, left, right)
+	case left.Type() == object.NULL_OBJ && operator == "includes":
+		return FALSE
 	case operator == "==":
 		return nativeBoolToBooleanObject(left.Type() == right.Type() && left.Equals(right))
 	case operator == "!=":
@@ -271,8 +275,42 @@ func evalStringRegexpInfixExpression(operator string, left, right object.Object)
 	}
 }
 
+func evalNullRegexpInfixExpression(operator string, left, right object.Object) object.Object {
+	switch operator {
+	case "=~":
+		return FALSE
+	case "!~":
+		return TRUE
+	default:
+		return newError("unknown operator: %s %s %s",
+			left.Type(), operator, right.Type())
+	}
+}
+
 func arrayContains(arr *object.Array, obj object.Object) (bool, error) {
 	// defer untrace(trace("arrayContains", arr, obj))
+
+	if _, ok := obj.(*object.Null); ok {
+		return false, nil
+	}
+
+	if regexpObj, ok := obj.(*object.Regexp); ok {
+		for idx, el := range arr.Elements {
+			stringObj, ok := el.(*object.String)
+			if !ok {
+				return false, fmt.Errorf("type mismatch at index %d in array: %s vs STRING",
+					idx, el.Type())
+			}
+			matched, err := regexpObj.MatchString(stringObj.Value)
+			if err != nil {
+				return false, fmt.Errorf("regexp match failed: %s", err)
+			}
+			if matched {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
 
 	for idx, el := range arr.Elements {
 		if el.Type() != obj.Type() {
