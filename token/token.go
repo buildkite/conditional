@@ -11,6 +11,7 @@ const (
 	INT    = "INT"    // 1343456
 	STRING = "STRING" // "foobar"
 	REGEXP = "REGEXP" // /^v1.0/
+	SHELL  = "SHELL"  // $branch, ${branch:-fallback}
 
 	BANG = "!"
 	DOT  = "."
@@ -28,6 +29,8 @@ const (
 	OR  = "||"
 
 	// Delimiters
+	QUESTION = "?"
+	COLON    = ":"
 	COMMA    = ","
 	LPAREN   = "("
 	RPAREN   = ")"

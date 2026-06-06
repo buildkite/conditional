@@ -96,14 +96,20 @@ func TestConditionalSyntaxErrors(t *testing.T) {
 			wantError:  ErrorKindParse,
 		},
 		{
-			name:       "validation rejects local-only contains operator",
+			name:       "parse error for malformed dotted identifier",
+			source:     upstreamParserSpec,
+			expression: `build..branch == "main"`,
+			wantError:  ErrorKindParse,
+		},
+		{
+			name:       "parser rejects local-only contains operator",
 			source:     upstreamParserSpec,
 			expression: `["main"] @> build.branch`,
 			ctx: Context{
 				EntryPoint: EntryPointBuildCondition,
 				Build:      Build{Branch: str("main")},
 			},
-			wantError: ErrorKindValidation,
+			wantError: ErrorKindParse,
 		},
 		{
 			name:       "validation rejects env without an argument",
@@ -125,14 +131,14 @@ func TestConditionalSyntaxErrors(t *testing.T) {
 func TestConditionalSyntaxEvaluationErrors(t *testing.T) {
 	tests := []evaluateCase{
 		{
-			name:       "evaluation rejects local-only contains operator",
+			name:       "evaluation rejects local-only contains operator at parse time",
 			source:     upstreamParserSpec,
 			expression: `["main"] @> build.branch`,
 			ctx: Context{
 				EntryPoint: EntryPointBuildCondition,
 				Build:      Build{Branch: str("main")},
 			},
-			wantError: ErrorKindValidation,
+			wantError: ErrorKindParse,
 		},
 		{
 			name:       "evaluation rejects literal unsupported Buildkite env",

@@ -124,6 +124,14 @@ func validateEnvCalls(expr ast.Expression) error {
 	switch expr := expr.(type) {
 	case *ast.PrefixExpression:
 		return validateEnvCalls(expr.Right)
+	case *ast.ConditionalExpression:
+		if err := validateEnvCalls(expr.Condition); err != nil {
+			return err
+		}
+		if err := validateEnvCalls(expr.Consequence); err != nil {
+			return err
+		}
+		return validateEnvCalls(expr.Alternative)
 	case *ast.InfixExpression:
 		if err := validateEnvCalls(expr.Left); err != nil {
 			return err
@@ -164,6 +172,14 @@ func validateOperators(expr ast.Expression) error {
 	switch expr := expr.(type) {
 	case *ast.PrefixExpression:
 		return validateOperators(expr.Right)
+	case *ast.ConditionalExpression:
+		if err := validateOperators(expr.Condition); err != nil {
+			return err
+		}
+		if err := validateOperators(expr.Consequence); err != nil {
+			return err
+		}
+		return validateOperators(expr.Alternative)
 	case *ast.InfixExpression:
 		if expr.Operator == "@>" {
 			return &Error{Kind: ErrorKindValidation, Message: "@> is not Buildkite conditional syntax"}
@@ -192,9 +208,13 @@ func validateOperators(expr ast.Expression) error {
 func referencesRoot(expr ast.Expression, root string) bool {
 	switch expr := expr.(type) {
 	case *ast.Identifier:
-		return expr.Value == root
+		return expr.Value == root || strings.HasPrefix(expr.Value, root+".")
 	case *ast.PrefixExpression:
 		return referencesRoot(expr.Right, root)
+	case *ast.ConditionalExpression:
+		return referencesRoot(expr.Condition, root) ||
+			referencesRoot(expr.Consequence, root) ||
+			referencesRoot(expr.Alternative, root)
 	case *ast.InfixExpression:
 		return referencesRoot(expr.Left, root) || referencesRoot(expr.Right, root)
 	case *ast.CallExpression:

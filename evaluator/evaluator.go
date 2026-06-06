@@ -2,6 +2,7 @@ package evaluator
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/buildkite/conditional/ast"
 	"github.com/buildkite/conditional/object"
@@ -33,6 +34,9 @@ func Eval(node ast.Node, scope Scope) object.Object {
 	case *ast.Regexp:
 		return &object.Regexp{Regexp: node.Regexp, Flags: node.Flags}
 
+	case *ast.ShellExpansion:
+		return newError("shell expansion evaluation is not implemented: %s", node.Raw)
+
 	case *ast.Boolean:
 		return nativeBoolToBooleanObject(node.Value)
 
@@ -47,14 +51,6 @@ func Eval(node ast.Node, scope Scope) object.Object {
 		return evalPrefixExpression(node.Operator, right)
 
 	case *ast.InfixExpression:
-		if node.Operator == "." {
-			if key, ok := dottedIdentifier(node); ok {
-				if obj, ok := scope.Get(key); ok {
-					return obj
-				}
-			}
-		}
-
 		left := Eval(node.Left, scope)
 		if isError(left) {
 			return left
@@ -65,20 +61,15 @@ func Eval(node ast.Node, scope Scope) object.Object {
 		}
 
 		var right object.Object
-		if node.Operator == `.` {
-			ident, ok := node.Right.(*ast.Identifier)
-			if !ok {
-				return newError("dot operator must receive identifier")
-			}
-			right = &object.String{Value: ident.Value}
-		} else {
-			right = Eval(node.Right, scope)
-		}
+		right = Eval(node.Right, scope)
 		if isError(right) {
 			return right
 		}
 
 		return evalInfixExpression(node.Operator, left, right)
+
+	case *ast.ConditionalExpression:
+		return evalConditionalExpression(node, scope)
 
 	case *ast.Identifier:
 		return evalIdentifier(node, scope)
@@ -89,7 +80,7 @@ func Eval(node ast.Node, scope Scope) object.Object {
 			return args[0]
 		}
 
-		obj, ok := scope.Get(node.Function)
+		obj, ok := resolveScopedName(node.Function, scope)
 		if !ok {
 			return newError("function not defined: %s", node.Function)
 		}
@@ -108,33 +99,28 @@ func Eval(node ast.Node, scope Scope) object.Object {
 	}
 }
 
-func dottedIdentifier(expr ast.Expression) (string, bool) {
-	switch expr := expr.(type) {
-	case *ast.Identifier:
-		return expr.Value, true
-	case *ast.InfixExpression:
-		if expr.Operator != "." {
-			return "", false
-		}
-		left, ok := dottedIdentifier(expr.Left)
-		if !ok {
-			return "", false
-		}
-		right, ok := expr.Right.(*ast.Identifier)
-		if !ok {
-			return "", false
-		}
-		return left + "." + right.Value, true
-	default:
-		return "", false
-	}
-}
-
 func nativeBoolToBooleanObject(input bool) *object.Boolean {
 	if input {
 		return TRUE
 	}
 	return FALSE
+}
+
+func evalConditionalExpression(node *ast.ConditionalExpression, scope Scope) object.Object {
+	condition := Eval(node.Condition, scope)
+	if isError(condition) {
+		return condition
+	}
+
+	conditionVal, ok := condition.(*object.Boolean)
+	if !ok {
+		return newError("conditional condition must be BOOLEAN, got %s", condition.Type())
+	}
+
+	if conditionVal.Value {
+		return Eval(node.Consequence, scope)
+	}
+	return Eval(node.Alternative, scope)
 }
 
 func applyFunction(fn object.Object, args []object.Object) object.Object {
@@ -170,8 +156,6 @@ func evalInfixExpression(operator string, left, right object.Object) object.Obje
 		return evalIntegerInfixExpression(operator, left, right)
 	case left.Type() == object.STRING_OBJ && right.Type() == object.STRING_OBJ:
 		return evalStringInfixExpression(operator, left, right)
-	case operator == "." && left.Type() == object.STRUCT_OBJ && right.Type() == object.STRING_OBJ:
-		return evalDotExpression(left, right)
 	case left.Type() == object.STRING_OBJ && right.Type() == object.REGEXP_OBJ:
 		return evalStringRegexpInfixExpression(operator, left, right)
 	case left.Type() == object.ARRAY_OBJ:
@@ -309,7 +293,7 @@ func evalArrayInfixExpression(operator string, left, right object.Object) object
 	leftVal := left.(*object.Array)
 
 	switch operator {
-	case "@>", "includes":
+	case "includes":
 		contains, err := arrayContains(leftVal, right)
 		if err != nil {
 			return newError("%s", err.Error())
@@ -321,34 +305,46 @@ func evalArrayInfixExpression(operator string, left, right object.Object) object
 	}
 }
 
-func evalDotExpression(s object.Object, prop object.Object) object.Object {
-	// defer untrace(trace("evalDotExpression", s, prop))
-
-	structVal, ok := s.(object.Struct)
-	if !ok {
-		return newError("type can't be used with the dot operator: %T", s)
-	}
-
-	propVal := prop.(*object.String).Value
-
-	val, ok := structVal.Get(propVal)
-	if !ok {
-		return newError("struct has no property %q", propVal)
-	}
-
-	return val
-
-}
-
 func evalIdentifier(node *ast.Identifier, scope Scope) object.Object {
 	// defer untrace(trace("evalIdentifier"))
 
-	val, ok := scope.Get(node.Value)
+	val, ok := resolveScopedName(node.Value, scope)
 	if !ok {
 		return newError("identifier not found: %s", node.Value)
 	}
 
 	return val
+}
+
+func resolveScopedName(name string, scope Scope) (object.Object, bool) {
+	if val, ok := scope.Get(name); ok {
+		return val, true
+	}
+
+	if !strings.Contains(name, ".") {
+		return nil, false
+	}
+
+	var current Scope = scope
+	parts := strings.Split(name, ".")
+	for i, part := range parts {
+		val, ok := current.Get(part)
+		if !ok {
+			return nil, false
+		}
+
+		if i == len(parts)-1 {
+			return val, true
+		}
+
+		next, ok := val.(Scope)
+		if !ok {
+			return nil, false
+		}
+		current = next
+	}
+
+	return nil, false
 }
 
 func newError(format string, a ...interface{}) *object.Error {

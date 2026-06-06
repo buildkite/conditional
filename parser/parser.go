@@ -3,6 +3,7 @@ package parser
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/buildkite/conditional/ast"
@@ -16,6 +17,7 @@ const regexpMatchTimeout = time.Second
 const (
 	_ int = iota
 	LOWEST
+	TERNARY
 	OR     // ||
 	AND    // &&
 	EQUALS // ==
@@ -33,6 +35,7 @@ var precedences = map[token.TokenType]int{
 	token.INCLUDES:  EQUALS,
 	token.AND:       AND,
 	token.OR:        OR,
+	token.QUESTION:  TERNARY,
 	token.LPAREN:    CALL,
 	token.DOT:       DOT,
 }
@@ -64,6 +67,7 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerPrefix(token.INT, p.parseIntegerLiteral)
 	p.registerPrefix(token.STRING, p.parseStringLiteral)
 	p.registerPrefix(token.REGEXP, p.parseRegexp)
+	p.registerPrefix(token.SHELL, p.parseShellExpansion)
 	p.registerPrefix(token.BANG, p.parsePrefixExpression)
 	p.registerPrefix(token.TRUE, p.parseBoolean)
 	p.registerPrefix(token.FALSE, p.parseBoolean)
@@ -76,11 +80,10 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerInfix(token.NOT_EQ, p.parseInfixExpression)
 	p.registerInfix(token.RE_EQ, p.parseInfixExpression)
 	p.registerInfix(token.RE_NOT_EQ, p.parseInfixExpression)
-	p.registerInfix(token.CONTAINS, p.parseInfixExpression)
 	p.registerInfix(token.INCLUDES, p.parseInfixExpression)
 	p.registerInfix(token.AND, p.parseInfixExpression)
 	p.registerInfix(token.OR, p.parseInfixExpression)
-	p.registerInfix(token.DOT, p.parseInfixExpression)
+	p.registerInfix(token.QUESTION, p.parseConditionalExpression)
 	p.registerInfix(token.LPAREN, p.parseCallExpression)
 
 	// Read two tokens, so curToken and peekToken are both set
@@ -192,7 +195,16 @@ func (p *Parser) curPrecedence() int {
 
 func (p *Parser) parseIdentifier() ast.Expression {
 	// defer untrace(trace("parseIdentifier", p.curToken))
+	if invalidDottedIdentifier(p.curToken.Literal) {
+		msg := fmt.Sprintf("invalid dotted identifier: %s", p.curToken.Literal)
+		p.errors = append(p.errors, msg)
+		return nil
+	}
 	return &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+}
+
+func invalidDottedIdentifier(value string) bool {
+	return strings.HasPrefix(value, ".") || strings.HasSuffix(value, ".") || strings.Contains(value, "..")
 }
 
 func (p *Parser) parseIntegerLiteral() ast.Expression {
@@ -213,6 +225,10 @@ func (p *Parser) parseIntegerLiteral() ast.Expression {
 
 func (p *Parser) parseStringLiteral() ast.Expression {
 	return &ast.StringLiteral{Token: p.curToken, Value: p.curToken.Literal}
+}
+
+func (p *Parser) parseShellExpansion() ast.Expression {
+	return &ast.ShellExpansion{Token: p.curToken, Raw: p.curToken.Literal}
 }
 
 func (p *Parser) parseRegexp() ast.Expression {
@@ -279,6 +295,25 @@ func (p *Parser) parseInfixExpression(left ast.Expression) ast.Expression {
 	precedence := p.curPrecedence()
 	p.nextToken()
 	expression.Right = p.parseExpression(precedence)
+
+	return expression
+}
+
+func (p *Parser) parseConditionalExpression(condition ast.Expression) ast.Expression {
+	expression := &ast.ConditionalExpression{
+		Token:     p.curToken,
+		Condition: condition,
+	}
+
+	p.nextToken()
+	expression.Consequence = p.parseExpression(LOWEST)
+
+	if !p.expectPeek(token.COLON) {
+		return nil
+	}
+
+	p.nextToken()
+	expression.Alternative = p.parseExpression(TERNARY - 1)
 
 	return expression
 }

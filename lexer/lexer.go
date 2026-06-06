@@ -75,22 +75,39 @@ func (l *Lexer) NextToken() token.Token {
 			tok = newToken(token.ILLEGAL, l.ch)
 		}
 	case '@':
-		if l.peekChar() == '>' {
-			ch := l.ch
-			l.readChar()
-			literal := string(ch) + string(l.ch)
-			tok = token.Token{Type: token.CONTAINS, Literal: literal}
-		} else {
-			tok = newToken(token.ILLEGAL, l.ch)
-		}
+		tok = newToken(token.ILLEGAL, l.ch)
 	case '.':
 		tok = newToken(token.DOT, l.ch)
+	case '?':
+		tok = newToken(token.QUESTION, l.ch)
+	case ':':
+		tok = newToken(token.COLON, l.ch)
+	case '$':
+		tok.Type = token.SHELL
+		var ok bool
+		tok.Literal, ok = l.readShell()
+		if !ok {
+			tok.Type = token.ILLEGAL
+		}
+		return tok
 	case '"':
 		tok.Type = token.STRING
-		tok.Literal = l.readString('"')
+		var terminated bool
+		tok.Literal, terminated = l.readString('"')
+		tok.Flags = `"`
+		if !terminated {
+			tok.Type = token.ILLEGAL
+			tok.Flags = ""
+		}
 	case '\'':
 		tok.Type = token.STRING
-		tok.Literal = l.readString('\'')
+		var terminated bool
+		tok.Literal, terminated = l.readString('\'')
+		tok.Flags = `'`
+		if !terminated {
+			tok.Type = token.ILLEGAL
+			tok.Flags = ""
+		}
 	case '/':
 		tok.Type = token.REGEXP
 		var terminated bool
@@ -171,7 +188,7 @@ func (l *Lexer) peekChar() byte {
 
 func (l *Lexer) readIdentifier() string {
 	position := l.position
-	for isLetter(l.ch) {
+	for isIdentPart(l.ch) {
 		l.readChar()
 	}
 	return l.input[position:l.position]
@@ -185,15 +202,64 @@ func (l *Lexer) readNumber() string {
 	return l.input[position:l.position]
 }
 
-func (l *Lexer) readString(quote byte) string {
+func (l *Lexer) readString(quote byte) (string, bool) {
 	position := l.position + 1
+	escaped := false
 	for {
 		l.readChar()
-		if l.ch == quote || l.ch == 0 {
-			break
+		if l.ch == 0 {
+			return l.input[position:l.position], false
+		}
+		if l.ch == quote && !escaped {
+			return l.input[position:l.position], true
+		}
+		escaped = l.ch == '\\' && !escaped
+		if l.ch != '\\' {
+			escaped = false
 		}
 	}
-	return l.input[position:l.position]
+}
+
+func (l *Lexer) readShell() (string, bool) {
+	position := l.position
+	l.readChar()
+
+	if isIdentStart(l.ch) {
+		for isIdentPart(l.ch) {
+			l.readChar()
+		}
+		return l.input[position:l.position], true
+	}
+
+	if l.ch != '{' {
+		l.readChar()
+		return l.input[position:l.position], false
+	}
+
+	depth := 1
+	escaped := false
+	for {
+		l.readChar()
+		if l.ch == 0 {
+			return l.input[position:l.position], false
+		}
+
+		switch {
+		case l.ch == '\\' && !escaped:
+			escaped = true
+			continue
+		case l.ch == '{' && !escaped:
+			depth++
+		case l.ch == '}' && !escaped:
+			depth--
+			if depth == 0 {
+				l.readChar()
+				return l.input[position:l.position], true
+			}
+		}
+
+		escaped = false
+	}
 }
 
 func (l *Lexer) readRegex() (string, string, bool) {
@@ -230,8 +296,16 @@ func (l *Lexer) readRegex() (string, string, bool) {
 	return literal, l.input[flagsPosition:l.readPosition], true
 }
 
-func isLetter(ch byte) bool {
+func isIdentStart(ch byte) bool {
 	return 'a' <= ch && ch <= 'z' || 'A' <= ch && ch <= 'Z' || ch == '_'
+}
+
+func isLetter(ch byte) bool {
+	return isIdentStart(ch)
+}
+
+func isIdentPart(ch byte) bool {
+	return isIdentStart(ch) || isDigit(ch) || ch == '.'
 }
 
 func isDigit(ch byte) bool {

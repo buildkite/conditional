@@ -80,6 +80,15 @@ func (r *Regexp) String() string {
 	return fmt.Sprintf("/%s/%s", r.Token.Literal, r.Flags)
 }
 
+type ShellExpansion struct {
+	Token token.Token
+	Raw   string
+}
+
+func (se *ShellExpansion) expressionNode()      {}
+func (se *ShellExpansion) TokenLiteral() string { return se.Token.Literal }
+func (se *ShellExpansion) String() string       { return se.Raw }
+
 type PrefixExpression struct {
 	Token    token.Token // The prefix token, e.g. !
 	Operator string
@@ -121,6 +130,29 @@ func (ie *InfixExpression) String() string {
 	}
 
 	out.WriteString(ie.Right.String())
+	out.WriteString(")")
+
+	return out.String()
+}
+
+type ConditionalExpression struct {
+	Token       token.Token
+	Condition   Expression
+	Consequence Expression
+	Alternative Expression
+}
+
+func (ce *ConditionalExpression) expressionNode()      {}
+func (ce *ConditionalExpression) TokenLiteral() string { return ce.Token.Literal }
+func (ce *ConditionalExpression) String() string {
+	var out bytes.Buffer
+
+	out.WriteString("(")
+	out.WriteString(ce.Condition.String())
+	out.WriteString(" ? ")
+	out.WriteString(ce.Consequence.String())
+	out.WriteString(" : ")
+	out.WriteString(ce.Alternative.String())
 	out.WriteString(")")
 
 	return out.String()

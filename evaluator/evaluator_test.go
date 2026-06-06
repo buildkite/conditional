@@ -77,11 +77,7 @@ func TestBangOperator(t *testing.T) {
 
 func TestEvalBooleanObjectComparison(t *testing.T) {
 	scope := object.Struct{
-		"build": object.Struct{
-			"pull_request": object.Struct{
-				"draft": &object.Boolean{Value: false},
-			},
-		},
+		"build.pull_request.draft": &object.Boolean{Value: false},
 	}
 
 	evaluated := testEvalWithScope(`build.pull_request.draft == false`, scope)
@@ -90,9 +86,7 @@ func TestEvalBooleanObjectComparison(t *testing.T) {
 
 func TestEvalNullComparison(t *testing.T) {
 	scope := object.Struct{
-		"build": object.Struct{
-			"tag": &object.Null{},
-		},
+		"build.tag": &object.Null{},
 	}
 
 	tests := []struct {
@@ -154,7 +148,7 @@ func TestCallOperator(t *testing.T) {
 	}
 }
 
-func TestDotOperator(t *testing.T) {
+func TestFlatDottedIdentifier(t *testing.T) {
 	tests := []struct {
 		input    string
 		expected bool
@@ -163,11 +157,7 @@ func TestDotOperator(t *testing.T) {
 	}
 
 	scope := object.Struct{
-		`foo`: object.Struct{
-			`bar`: object.Struct{
-				`baz`: &object.String{Value: "test"},
-			},
-		},
+		`foo.bar.baz`: &object.String{Value: "test"},
 	}
 
 	for _, tt := range tests {
@@ -176,19 +166,53 @@ func TestDotOperator(t *testing.T) {
 	}
 }
 
-func TestDotOperatorFailsOnMissingStructProperty(t *testing.T) {
-	obj := testEvalWithScope(`foo.bar`, object.Struct{
-		`foo`: object.Struct{},
-	})
+func TestNestedDottedIdentifierFallback(t *testing.T) {
+	scope := object.Struct{
+		"build": object.Struct{
+			"message": &object.String{Value: "deploy"},
+		},
+	}
+
+	evaluated := testEvalWithScope(`build.message == "deploy"`, scope)
+	testBooleanObject(t, evaluated, true)
+}
+
+func TestFlatDottedIdentifierTakesPrecedence(t *testing.T) {
+	scope := object.Struct{
+		"build.message": &object.String{Value: "flat"},
+		"build": object.Struct{
+			"message": &object.String{Value: "nested"},
+		},
+	}
+
+	evaluated := testEvalWithScope(`build.message == "flat"`, scope)
+	testBooleanObject(t, evaluated, true)
+}
+
+func TestFlatDottedIdentifierFailsOnMissingAssignment(t *testing.T) {
+	obj := testEvalWithScope(`foo.bar`, object.Struct{})
 
 	result, ok := obj.(*object.Error)
 	if !ok {
 		t.Fatalf("result is not an error. got=%T (%+v)", obj, obj)
 	}
 
-	if result.Message != `struct has no property "bar"` {
+	if result.Message != `identifier not found: foo.bar` {
 		t.Fatalf("bad error message: %v", result.Message)
 	}
+}
+
+func TestNestedDottedFunctionFallback(t *testing.T) {
+	scope := object.Struct{
+		"build": object.Struct{
+			"env": object.Function(func(args []object.Object) object.Object {
+				return &object.String{Value: "from-nested"}
+			}),
+		},
+	}
+
+	evaluated := testEvalWithScope(`build.env("FOO") == "from-nested"`, scope)
+	testBooleanObject(t, evaluated, true)
 }
 
 func TestContainsOperator(t *testing.T) {
@@ -198,9 +222,6 @@ func TestContainsOperator(t *testing.T) {
 	}{
 		{`["llamas","alpacas"] includes 'alpacas'`, true},
 		{`["llamas","alpacas"] includes 'sheep'`, false},
-		{`["llamas","alpacas"] @> 'alpacas'`, true},
-		{`["llamas","alpacas"] @> 'sheep'`, false},
-		{`[1,2,3] @> 2`, true},
 	}
 
 	for _, tt := range tests {
@@ -211,18 +232,30 @@ func TestContainsOperator(t *testing.T) {
 
 func TestContainsOperatorWithScopeArray(t *testing.T) {
 	scope := object.Struct{
-		"build": object.Struct{
-			"creator": object.Struct{
-				"teams": &object.Array{Elements: []object.Object{
-					&object.String{Value: "deploy"},
-					&object.String{Value: "platform"},
-				}},
-			},
-		},
+		"build.creator.teams": &object.Array{Elements: []object.Object{
+			&object.String{Value: "deploy"},
+			&object.String{Value: "platform"},
+		}},
 	}
 
 	evaluated := testEvalWithScope(`build.creator.teams includes "deploy"`, scope)
 	testBooleanObject(t, evaluated, true)
+}
+
+func TestConditionalExpression(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{`1 == 2 ? 3 == 4 : 5 == 5`, true},
+		{`1 == 1 ? 3 == 4 : 5 == 5`, false},
+		{`false ? true : false ? true : true`, true},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEval(tt.input)
+		testBooleanObject(t, evaluated, tt.expected)
+	}
 }
 
 func testEval(input string) object.Object {
@@ -233,6 +266,9 @@ func testEvalWithScope(input string, scope Scope) object.Object {
 	l := lexer.New(input)
 	p := parser.New(l)
 	expr := p.Parse()
+	if len(p.Errors()) > 0 {
+		return &object.Error{Message: p.Errors()[0]}
+	}
 	return Eval(expr, scope)
 }
 
