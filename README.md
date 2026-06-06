@@ -1,7 +1,6 @@
 # Buildkite Conditional Evaluator
 
 [![Build status](https://badge.buildkite.com/e7ce8917b2bbb76ee5ee7a6d374b019ab56fad137ef05ee070.svg?branch=master)](https://buildkite.com/buildkite/conditional)
-[![Release](https://img.shields.io/github/v/release/buildkite/conditional?label=Release)](https://github.com/buildkite/conditional/releases)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 A Go library for validating and evaluating Buildkite conditional expressions
