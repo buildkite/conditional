@@ -165,7 +165,7 @@ func TestLexingArrays(t *testing.T) {
 	})
 }
 
-func TestLexingRejectsNonServerContainsOperator(t *testing.T) {
+func TestLexingRejectsAtGreaterOperator(t *testing.T) {
 	expectTokens(t, `["llamas", "alpacas"] @> "alpacas"`, []tokenExpectation{
 		{token.LBRACKET, "["},
 		{token.STRING, "llamas"},

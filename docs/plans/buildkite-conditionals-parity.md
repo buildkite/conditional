@@ -489,7 +489,7 @@ from this plan.
 | Context restrictions | Root entrypoints now model build conditions, build conditions with a step, build notifications, and step notifications. `step.*` fails validation unless the entrypoint supplies a step, and notification entrypoints convert parse, validation, and evaluation errors to `false`. | Finish auditing entrypoint-specific docs/server differences, especially variables documented as notification-only but exposed by `Build::Condition.context`. |
 | Final result | Root `Validate`/`Evaluate` now type-check for a boolean final result; lower-level `Eval` still returns any `object.Object` during transition. | Move implementation packages under `internal/` and keep root `(bool, error)` as the supported Buildkite surface. |
 | Regex syntax | regexp2 accepts some features the server rejects. | Keep regexp2 only with a server-compatible validator for flags and unsupported constructs. |
-| Divergent operators | `@>` no longer tokenizes as a Buildkite parser operator. Some lower-level compatibility constants may remain until cleanup. | Remove remaining dead `@>` constants or generic-language artifacts in the cleanup slice. |
+| Divergent operators | `@>` no longer tokenizes as a Buildkite parser operator, and the dead token/parser/root-validation compatibility artifacts have been removed. | Keep parser/root divergence tests so local-only syntax stays rejected. |
 | Type mismatch semantics | Core equality, regex matching, `includes`, `!`, logical, ternary, enum, null, array comparison, and concrete Buildkite function cases now use server-derived type-checking behavior. | Finish exact error category coverage and the remaining context-driven function cases. |
 | Conformance | Root package tests are now split into source-tagged table-driven files for syntax, evaluation, regex, context, and root API error behavior. The tables seed docs and upstream spec coverage but do not yet port every blocked upstream group. | Expand the tables in each implementation slice until every manifest group is `ported`, `superseded`, or `intentionally_excluded` before claiming parity. |
 
@@ -980,6 +980,17 @@ Definition of done:
   availability, supported syntax, and fail-closed behavior.
 - Package boundaries are reviewed for cohesion, exported identifiers, comments,
   and unnecessary interfaces.
+
+Current Slice 7 progress:
+
+- Removed the dead `@>` token, parser precedence entry, and root validation
+  fallback. Lexer, parser, and root API tests still cover parse-time rejection
+  for `@>`.
+- README examples now use server-compatible Buildkite conditionals and the root
+  `conditional.Validate`/`conditional.Evaluate` API instead of lower-level
+  lexer/parser/evaluator wiring.
+- Removed README examples that advertised `@>` compatibility, unavailable
+  `meta-data("foo")`, and generic object/function syntax.
 
 ### Slice 8: Optional Server Oracle
 

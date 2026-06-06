@@ -21,7 +21,6 @@ const (
 	NOT_EQ    = "!="
 	RE_EQ     = "=~"
 	RE_NOT_EQ = "!~"
-	CONTAINS  = "@>"
 	INCLUDES  = "includes"
 
 	// Boolean Operators

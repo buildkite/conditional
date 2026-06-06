@@ -31,7 +31,6 @@ var precedences = map[token.TokenType]int{
 	token.NOT_EQ:    EQUALS,
 	token.RE_EQ:     EQUALS,
 	token.RE_NOT_EQ: EQUALS,
-	token.CONTAINS:  EQUALS,
 	token.INCLUDES:  EQUALS,
 	token.AND:       AND,
 	token.OR:        OR,
