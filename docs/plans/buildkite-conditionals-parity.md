@@ -426,69 +426,36 @@ from this plan.
 - Runtime `env()` and `build.env()` calls now enforce the server's blank-name
   and `BUILDKITE_*` allowlist checks after interpolation, so dynamic names fail
   closed the same way static literal names do.
-- Some landed behavior is still explicitly provisional because it diverges from
-  the server regex validator or still lacks the exhaustive Buildkite context
-  matrix.
+- The remaining work is hardening and optional server-oracle support, not a
+  known parser, evaluator, regex, or context implementation gap.
 
 ### Active Slice
 
-- Slice 5 is now filling out the Buildkite context and `env()` matrix after the
-  Slice 4 public-surface audit. Generic Ruby custom functions and lazy-variable
-  wrappers are not a public Go API; concrete Buildkite functions, typed context
-  fields, and derived helpers are the parity target.
-- Slice 4 aligned type checking and evaluator semantics with the server
-  evaluator for the public Buildkite surface:
-- Root `Validate` now uses server-style type checking instead of evaluating the
-  expression just to prove it returns a boolean. Unknown variables/functions,
-  wrong arity, incompatible operators, invalid `env()` argument types, enum
-  mismatches, and non-boolean root results fail before runtime.
-- Evaluator semantics now match upstream cases for regex `includes`, `null
-  includes ...`, `null =~ /.../`, `null !~ /.../`, and short-circuiting branches
-  that would otherwise fail at runtime.
-- Runtime evaluation now uses the server's Ruby truthiness for logical and
-  ternary decisions, so typed nil booleans are falsey and `!nil` is true through
-  the root API.
-- Equality semantics now allow array-vs-array and array-vs-null comparisons,
-  while `includes` rejects enum values as enum token types rather than treating
-  them as plain strings.
-- Shell expansion operands now evaluate against the merged Buildkite
-  environment for set, unset, empty, required, default, alternate, substring,
-  nested substring argument, and bad substring length cases.
-- Double-quoted strings now evaluate shell substitutions, collapse `$$` to a
-  literal dollar, and decode the server escape set. Single-quoted strings decode
-  only the server-supported `\\` and `\'` escapes and keep shell-looking text
-  literal.
-- Shell fallback strings now decode server escapes, support nested single- and
-  double-quoted fallback strings, and keep braces inside nested fallback quotes
-  from closing the surrounding `${...}` expression.
-- `env()` and `build.env()` now reject blank dynamic names and unsupported
-  dynamic `BUILDKITE_*` names during evaluation. Notification entrypoints still
-  convert those evaluation errors to `false`, matching the server deliverability
-  paths.
-- The built-in environment matrix now covers triggered-from build/job values,
-  rebuilt-from values, pull request merge-refspec state, and merge-queue
-  `BUILDKITE_GIT_DIFF_BASE` behavior, including the server's blank-string
-  defaults for supported built-in keys.
-- Server-supported cases that the current implementation cannot pass are not
-  added as skipped tests. They remain recorded in the manifest and known gaps
-  until the parser, evaluator, context, and regex parity slices implement them.
-- `docs/plans/buildkite-conditionals-package-migration.md` records the intended
-  movement from public implementation packages to `internal/` once the root API
-  is ready to own the parity contract.
+- Slices 1 through 7 have landed. The active work is parity hardening: keep the
+  plan aligned with merged code, fill test-only gaps found by docs or upstream
+  spec audits, and avoid reopening implemented behavior without new evidence.
+- The current hardening slice adds explicit root-package coverage for every
+  `BUILDKITE_*` key listed in the public `build.env()` docs. The library already
+  accepted those names; the new table tests make that contract durable for both
+  `env()` and `build.env()`, including GitHub deployment, check-run, comment,
+  release, and review variables supplied through `BuildEnv`.
+- Slice 8, the optional server oracle, remains the only planned delivery slice
+  that has not landed. It should stay optional unless the team has reliable
+  server-backed fixtures and credentials for a non-CI conformance command.
 
 ### Known Gaps
 
 | Area | Current Behavior | Required Direction |
 | --- | --- | --- |
 | Dotted names | Parser and evaluator internals now use flat dotted identifiers for server variables; nested dotted lookup fallback has been removed, and implementation packages are under `internal/`. | Keep flat dotted identifier/function conformance coverage as new server variables are added. |
-| `build.env()` | `build.env("NAME")` parses as a flat function identifier, type-checks with the server's string return token type, evaluates to `null` for absent variables, and fails closed for blank or unsupported dynamic `BUILDKITE_*` names. | Expand validator and conformance coverage for the full server env matrix in Slice 5. |
-| Ternary syntax | Ternaries parse with server precedence, evaluate lazily, use Ruby truthiness for nil runtime conditions, and type-check branch compatibility without local nullable-union narrowing. | Expand conformance coverage for every upstream ternary type-checker case before marking Slice 4 complete. |
-| Shell substitution | Shell expansion operands, double-quoted interpolation, server string escapes, and quoted fallback strings evaluate for the upstream set/unset/empty/default/alternate/required/substring matrix and representative fallback grammar cases. | Run a final upstream parser/evaluator audit before marking every shell substitution group accounted for. |
-| Scope | Public callers pass `Context`; the root package builds an internal `object.Struct` assignment table. | Finish the exhaustive server-style Buildkite assignment matrix with documented variables and context availability. |
-| Nullable values | Documented nullable Buildkite assignments are present as runtime `null` while keeping their server-declared type for validation. Truly unknown variables still fail closed. | Finish the exhaustive context matrix and lazy variable coverage so every documented nullable field is covered in every entrypoint. |
-| Context restrictions | Root entrypoints now model build conditions, build conditions with a step, build notifications, and step notifications. `step.*` fails validation unless the entrypoint supplies a step, and notification entrypoints convert parse, validation, and evaluation errors to `false`. | Finish auditing entrypoint-specific docs/server differences, especially variables documented as notification-only but exposed by `Build::Condition.context`. |
+| `build.env()` | `build.env("NAME")` parses as a flat function identifier, type-checks with the server's string return token type, evaluates to `null` for absent variables, and fails closed for blank or unsupported dynamic `BUILDKITE_*` names. Static validation accepts every documented `BUILDKITE_*` key for both `env()` and `build.env()`. | Keep the docs allowlist test in sync when Buildkite publishes new conditional env keys. |
+| Ternary syntax | Ternaries parse with server precedence, evaluate lazily, use Ruby truthiness for nil runtime conditions, and type-check branch compatibility without local nullable-union narrowing. | Keep upstream ternary cases in the conformance tables as new server specs are found. |
+| Shell substitution | Shell expansion operands, double-quoted interpolation, server string escapes, and quoted fallback strings evaluate for the upstream set/unset/empty/default/alternate/required/substring matrix and representative fallback grammar cases. | Keep substitution grammar cases source-tagged in root and parser tests. |
+| Scope | Public callers pass `Context`; the root package builds an internal flat assignment table. | Keep server-style assignment coverage as new conditional variables are added upstream. |
+| Nullable values | Documented nullable Buildkite assignments are present as runtime `null` while keeping their server-declared type for validation. Truly unknown variables still fail closed. | Keep nullability coverage in the context matrix as new nullable fields are added. |
+| Context restrictions | Root entrypoints now model build conditions, build conditions with a step, build notifications, and step notifications. `step.*` fails validation unless the entrypoint supplies a step, and notification entrypoints convert parse, validation, and evaluation errors to `false`. | Keep auditing entrypoint-specific docs/server differences, especially variables documented as notification-only but exposed by `Build::Condition.context`. |
 | Final result | Root `Validate`/`Evaluate` now type-check for a boolean final result; implementation-only `Eval` is internal and still returns `object.Object`. | Keep root `(bool, error)` as the supported Buildkite surface. |
-| Regex syntax | regexp2 accepts some features the server rejects. | Keep regexp2 only with a server-compatible validator for flags and unsupported constructs. |
+| Regex syntax | regexp2 is bounded by a match timeout and guarded by a server-compatible validator for flags and unsupported constructs. | Keep the accepted/rejected regex matrix aligned with `Conditional::Regexp` as upstream changes. |
 | Divergent operators | `@>` no longer tokenizes as a Buildkite parser operator, and the dead token/parser/root-validation compatibility artifacts have been removed. | Keep parser/root divergence tests so local-only syntax stays rejected. |
 | Type mismatch semantics | Core equality, regex matching, `includes`, `!`, logical, ternary, enum, null, array comparison, and concrete Buildkite function cases now use server-derived type-checking behavior. | Finish exact error category coverage and the remaining context-driven function cases. |
 | Conformance | Root package tests are now split into source-tagged table-driven files for syntax, evaluation, regex, context, and root API error behavior. The tables seed docs and upstream spec coverage but do not yet port every blocked upstream group. | Expand the tables in each implementation slice until every manifest group is `ported`, `superseded`, or `intentionally_excluded` before claiming parity. |
@@ -832,11 +799,8 @@ Current Slice 4 progress:
   interpolation: blank names and unsupported `BUILDKITE_*` names produce
   evaluation errors for build conditions and `false` for notification
   deliverability checks, while dynamic custom names remain runtime lookups.
-- Remaining Slice 4 audit before marking the slice landed: a final pass over the
-  upstream evaluator/parser groups to ensure no substitution grammar or public
-  Buildkite type-checker cases are unaccounted for. Generic Ruby-only custom
-  function and lazy-variable wrapper specs are superseded by the root Go API's
-  concrete function and context model.
+
+Status: landed.
 
 ### Slice 5: Buildkite Context And `env()` Semantics
 
@@ -903,6 +867,12 @@ Current Slice 5 progress:
 - Covered built-in environment keys whose server fallback is a blank string now
   materialize as `""` through `build.env()` instead of `null`, matching
   `Build::PipelineEnvironment#[]`.
+- Documented `build.env()` `BUILDKITE_*` keys are covered by source-tagged
+  validation tables for both `env()` and `build.env()`. The GitHub
+  deployment, check-run, comment, release, and review variables also have
+  evaluation coverage showing values come from `BuildEnv`.
+
+Status: landed.
 
 ### Slice 6: Regex Exact Parity
 
@@ -965,6 +935,8 @@ Current Slice 6 progress:
   backtracking pattern and proves matches fail with a timeout instead of running
   unbounded.
 
+Status: landed.
+
 ### Slice 7: Divergence Removal And Codebase Cleanup
 
 Remove syntax, tests, examples, and package shape that conflict with exact
@@ -1002,6 +974,8 @@ Current Slice 7 progress:
   as `build.message` and `build.env`.
 - Public README and package docs now describe the root API, entrypoints,
   variable roots, nullable missing values, and fail-closed behavior.
+
+Status: landed.
 
 ### Slice 8: Optional Server Oracle
 
