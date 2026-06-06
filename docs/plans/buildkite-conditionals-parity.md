@@ -343,13 +343,13 @@ Initial manifest:
 
 | Upstream source | Groups to account for | Current status | Required status before parity claim |
 | --- | --- | --- | --- |
-| `spec/models/conditional/parser_spec.rb` | friendly errors, comments, objects/properties, function calls, complex strings, simple expressions, operand precedence, negation, token positions | `blocked`: parser grammar parity is Slice 3 | `ported` or `intentionally_excluded` with reason |
-| `spec/models/conditional/evaluator_spec.rb` | booleans, nulls, arrays, regexes, string comparisons, ternaries, variables/enums, shell substitutions | `blocked`: evaluator parity is Slice 4 | `ported` |
+| `spec/models/conditional/parser_spec.rb` | friendly errors, comments, objects/properties, function calls, complex strings, simple expressions, operand precedence, negation, token positions | `blocked`: Slice 2 seeds source-tagged root cases for comments, simple expressions, precedence, and local rejection of `@>`; full parser grammar parity is Slice 3 | `ported` or `intentionally_excluded` with reason |
+| `spec/models/conditional/evaluator_spec.rb` | booleans, nulls, arrays, regexes, string comparisons, ternaries, variables/enums, shell substitutions | `blocked`: Slice 2 seeds source-tagged root cases for booleans, null comparisons, string comparisons, array string includes, regexes, and short-circuiting; ternaries, shell substitutions, enum behavior, null-regex semantics, and array-regex includes remain Slice 4 work | `ported` |
 | `spec/models/conditional/variable_spec.rb` | typed variables, nullable typed values, enums, lazy values | `blocked`: typed context model is Slice 4 and Slice 5 | `ported` or `superseded` by Go type/context tests |
-| `spec/models/build/condition_spec.rb` | `env()`, `build.env()`, build/pipeline/org fields, webhook fields, pull request label, project env merge, validation, context construction | `blocked`: Buildkite context semantics are Slice 5 | `ported` |
-| `spec/validators/build_condition_validator_spec.rb` | blank/nil validation, invalid conditionals, step-variable validation option | `blocked`: root smoke tests cover only blank validation in Slice 1 | `ported` |
-| `spec/models/build/notification_spec.rb` | no conditional, false on unmet condition, false on parser/evaluation errors | `blocked`: root smoke tests cover only false-on-error in Slice 1 | `ported` |
-| `spec/models/step/notification_spec.rb` | step variables and false-on-error notification behavior | `blocked`: root smoke tests cover only step availability in Slice 1 | `ported` |
+| `spec/models/build/condition_spec.rb` | `env()`, `build.env()`, build/pipeline/org fields, webhook fields, pull request label, project env merge, validation, context construction | `blocked`: Slice 2 seeds source-tagged root cases for representative `env()`, `build.env()`, organization, pipeline, webhook, pull request label, project env merge, and validation behavior; the exhaustive context matrix is Slice 5 | `ported` |
+| `spec/validators/build_condition_validator_spec.rb` | blank/nil validation, invalid conditionals, step-variable validation option | `blocked`: Slice 2 ports blank string, invalid expression, step-variable rejection, and step-option acceptance through root validation; nil validation is not representable in the string API | `ported` or `intentionally_excluded` with reason |
+| `spec/models/build/notification_spec.rb` | no conditional, false on unmet condition, false on parser/evaluation errors | `blocked`: Slice 2 ports blank/no-condition equivalent, false-on-unmet condition, false-on-parse-error, and false-on-unavailable-step-variable behavior; full notification parsing/config propagation remains out of scope | `ported` |
+| `spec/models/step/notification_spec.rb` | step variables and false-on-error notification behavior | `blocked`: Slice 2 ports step key/id checks and false-on-parse-error through the step notification entrypoint; full step notification model behavior remains out of scope | `ported` |
 | `spec/models/build/pipeline_config/build_notifications_spec.rb` | config parsing and notification conditional propagation | `blocked`: config parsing is not in the current slice | `blocked` until config parsing is in scope, or `intentionally_excluded` with reason |
 | `spec/models/build/pipeline_config/step_notifications_spec.rb` | config parsing and step notification conditional propagation | `blocked`: config parsing is not in the current slice | `blocked` until config parsing is in scope, or `intentionally_excluded` with reason |
 
@@ -382,9 +382,18 @@ from this plan.
 
 ### Active Slice
 
-- Slice 1 is creating the root package API, server-derived entrypoint model,
+- Slice 2 is creating the source-tagged, table-driven root conformance suite.
+  The suite keeps test data in Go code and uses a small helper instead of YAML
+  fixtures.
+- Root package cases now carry a `source` string that points to the public docs
+  or the upstream `buildkite/buildkite` spec/model file that motivated the case.
+- Server-supported cases that the current implementation cannot pass are not
+  added as skipped tests. They remain recorded in the manifest and known gaps
+  until the parser, evaluator, context, and regex parity slices implement them.
+- Slice 1 introduced the root package API, server-derived entrypoint model,
   public context structs, typed error categories, root smoke tests, and package
-  migration map.
+  migration map. If it is not yet merged into `master`, Slice 2 stays stacked on
+  that branch.
 - `docs/plans/buildkite-conditionals-package-migration.md` records the intended
   movement from public implementation packages to `internal/` once the root API
   is ready to own the parity contract.
@@ -404,7 +413,7 @@ from this plan.
 | Regex syntax | regexp2 accepts some features the server rejects. | Keep regexp2 only with a server-compatible validator for flags and unsupported constructs. |
 | Divergent operators | `@>` exists locally but is not server syntax. | Remove it from the Buildkite language and tests. |
 | Type mismatch semantics | Local behavior exists but is not server-proven. | Build a server-derived matrix for equality, regex matching, `includes`, `!`, missing values, and function argument errors. |
-| Conformance | Unit tests cover selected docs examples. | Add idiomatic table-driven Go conformance tests that can be run locally and optionally compared with a server oracle. |
+| Conformance | Root package tests are now split into source-tagged table-driven files for syntax, evaluation, regex, context, and root API error behavior. The tables seed docs and upstream spec coverage but do not yet port every blocked upstream group. | Expand the tables in each implementation slice until every manifest group is `ported`, `superseded`, or `intentionally_excluded` before claiming parity. |
 
 ## Server Syntax And Context Surface To Cover
 
@@ -644,6 +653,30 @@ Definition of done:
 - Existing unit tests still run through `mise run check`.
 - The helper makes parser errors visible; tests must not evaluate a nil or
   erroneous AST by accident.
+
+Current Slice 2 progress:
+
+- `test_helpers_test.go` provides small pointer helpers and shared
+  `runEvaluateCases` / `runValidateCases` helpers that require every case to
+  name its source.
+- `syntax_test.go`, `eval_test.go`, `regex_test.go`, `context_test.go`, and
+  `conditional_test.go` split the root suite by behavior rather than by a large
+  monolithic fixture.
+- The docs operator reference is covered for comparators, logical operators,
+  `includes`, integers, strings, booleans, `null`, parentheses, regex literals,
+  prefix `!`, and comments.
+- The docs example expressions are seeded for branch equality/inequality,
+  feature branch regex, tag presence, tag regex via variable and `build.env()`,
+  case-insensitive message regex, scheduled source, custom env, creator teams,
+  draft pull requests, and merge queue base branch.
+- Docs examples that encode YAML/env-substitution escaping for `$` anchors are
+  recorded as blocked until Slice 3 implements shell-style substitution; the
+  current regex tests separately assert raw `$` anchors and escaped literal
+  dollars so the parser does not conflate those semantics.
+- Representative upstream cases are ported from parser, evaluator,
+  `Build::Condition`, build condition validator, build notification, and step
+  notification specs. The manifest remains `blocked` for every upstream group
+  that still needs feature work rather than skipped tests.
 
 ### Slice 3: Parser Grammar Parity
 
