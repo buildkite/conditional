@@ -5,7 +5,8 @@
 // set Context.EntryPoint to the place where the conditional runs, then call
 // Validate or Evaluate.
 //
-// Build condition entrypoints return validation and evaluation errors to the
-// caller. Notification entrypoints model Buildkite notification delivery and
-// convert parse, validation, and evaluation errors to false.
+// Validate always returns parse and validation errors. Evaluate returns errors
+// for build condition entrypoints. Notification entrypoints model Buildkite
+// notification delivery, so Evaluate converts parse, validation, and evaluation
+// errors to false for those entrypoints.
 package conditional

@@ -57,18 +57,20 @@ Set `Context.EntryPoint` to the Buildkite location where the conditional runs:
 * `EntryPointBuildCondition` evaluates build conditionals without `step.*`.
 * `EntryPointBuildConditionWithStep` evaluates build conditionals where step
   variables are available.
-* `EntryPointBuildNotification` evaluates build notification conditionals and
-  converts parse, validation, and evaluation errors to `false`.
+* `EntryPointBuildNotification` evaluates build notification conditionals.
+  `Evaluate` converts parse, validation, and evaluation errors to `false`.
 * `EntryPointStepNotification` evaluates step notification conditionals with
-  `step.*` variables and converts parse, validation, and evaluation errors to
-  `false`.
+  `step.*` variables. `Evaluate` converts parse, validation, and evaluation
+  errors to `false`.
 
 ## Variables
 
 The root API builds flat Buildkite assignments from `Context`:
 
 * `build.*` values come from `Context.Build`.
-* `pipeline.*` values come from `Context.Pipeline`.
+* `pipeline.*` values come from documented `Context.Pipeline` fields:
+  `id`, `slug`, `default_branch`, `repository`, `started_passing`,
+  `started_failing`, and `next_finished_build_exists`.
 * `organization.*` values come from `Context.Organization`.
 * `step.*` values come from `Context.Step` only for step-aware entrypoints.
 * `env("NAME")` reads the merged build and project environment, returning an
@@ -80,6 +82,10 @@ Missing documented nullable values evaluate as `null`. Unknown variables,
 unknown functions, unsupported `BUILDKITE_*` env names, invalid regular
 expressions, unsupported regular expression features, type mismatches, and
 non-boolean final results fail closed.
+
+`Validate` always reports parse and validation errors. `Evaluate` reports errors
+for build condition entrypoints, while notification entrypoints return `false`
+for parse, validation, and evaluation errors.
 
 ## Usage
 
