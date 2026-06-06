@@ -344,8 +344,8 @@ Initial manifest:
 | Upstream source | Groups to account for | Current status | Required status before parity claim |
 | --- | --- | --- | --- |
 | `spec/models/conditional/parser_spec.rb` | friendly errors, comments, objects/properties, function calls, complex strings, simple expressions, operand precedence, negation, token positions | `blocked`: Slice 3 ports flat dotted identifiers/functions, ternary precedence, shell expansion operands, malformed dotted-name rejection, and parser-level rejection of `@>`; Slice 4 starts double-quoted shell interpolation. Exact friendly messages, token positions, and full string escape parity remain follow-up parser work | `ported` or `intentionally_excluded` with reason |
-| `spec/models/conditional/evaluator_spec.rb` | booleans, nulls, arrays, regexes, string comparisons, ternaries, variables/enums, shell substitutions | `blocked`: Slice 4 ports regex includes, null regex/includes semantics, shell substitution evaluation, double-quoted interpolation, enum literal validation, and type-checker rejection for representative mismatches. Full custom function/lazy variable coverage remains | `ported` |
-| `spec/models/conditional/variable_spec.rb` | typed variables, nullable typed values, enums, lazy values | `blocked`: Slice 4 adds root-level typed variable and enum validation for the Buildkite context model; lazy variable internals and exhaustive variable specs remain Slice 5/cleanup work | `ported` or `superseded` by Go type/context tests |
+| `spec/models/conditional/evaluator_spec.rb` | booleans, nulls, arrays, regexes, string comparisons, ternaries, variables/enums, shell substitutions | `blocked`: Slice 4 ports regex includes, null regex/includes semantics, shell substitution evaluation, double-quoted interpolation, enum literal validation, logical type-checking before runtime short-circuiting, enum comparison asymmetry, array equality/null comparisons, Ruby-style falsey runtime behavior for typed nil booleans, and representative type-checker rejection cases. Full custom function/lazy variable coverage remains | `ported` |
+| `spec/models/conditional/variable_spec.rb` | typed variables, nullable typed values, enums, lazy values | `blocked`: Slice 4 ports the server's declared-type behavior for nil values: typed nil strings, booleans, arrays, and enums type-check as their declared type rather than nullable unions. Lazy variable internals and exhaustive variable specs remain Slice 5/cleanup work | `ported` or `superseded` by Go type/context tests |
 | `spec/models/build/condition_spec.rb` | `env()`, `build.env()`, build/pipeline/org fields, webhook fields, pull request label, project env merge, validation, context construction | `blocked`: Slice 2 seeds source-tagged root cases for representative `env()`, `build.env()`, organization, pipeline, webhook, pull request label, project env merge, and validation behavior; the exhaustive context matrix is Slice 5 | `ported` |
 | `spec/validators/build_condition_validator_spec.rb` | blank/nil validation, invalid conditionals, step-variable validation option | `blocked`: Slice 2 ports blank string, invalid expression, step-variable rejection, and step-option acceptance through root validation; nil validation is not representable in the string API | `ported` or `intentionally_excluded` with reason |
 | `spec/models/build/notification_spec.rb` | no conditional, false on unmet condition, false on parser/evaluation errors | `blocked`: Slice 2 ports blank/no-condition equivalent, false-on-unmet condition, false-on-parse-error, and false-on-unavailable-step-variable behavior; full notification parsing/config propagation remains out of scope | `ported` |
@@ -387,8 +387,15 @@ from this plan.
 - Slice 3 landed parser grammar alignment for flat dotted identifiers/functions,
   ternary parsing, shell expansion operands, parser-level `@>` rejection, and
   unterminated string/substitution errors.
+- Slice 4 now aligns the root type checker with server declared-type semantics:
+  Buildkite assignments keep their declared type even when the runtime value is
+  nil, enums are not interchangeable with strings except for server-supported
+  enum-to-static-string comparisons, logical operands are type-checked on both
+  sides before runtime short-circuiting, and ternary branches do not create
+  flow-sensitive nullable unions.
 - Some landed behavior is still explicitly provisional because it diverges from
-  the server regex validator or still lacks the server type checker.
+  the server regex validator or still lacks exhaustive custom function/lazy
+  variable coverage.
 
 ### Active Slice
 
@@ -401,6 +408,12 @@ from this plan.
 - Evaluator semantics now match upstream cases for regex `includes`, `null
   includes ...`, `null =~ /.../`, `null !~ /.../`, and short-circuiting branches
   that would otherwise fail at runtime.
+- Runtime evaluation now uses the server's Ruby truthiness for logical and
+  ternary decisions, so typed nil booleans are falsey and `!nil` is true through
+  the root API.
+- Equality semantics now allow array-vs-array and array-vs-null comparisons,
+  while `includes` rejects enum values as enum token types rather than treating
+  them as plain strings.
 - Shell expansion operands now evaluate against the merged Buildkite
   environment for set, unset, empty, required, default, alternate, substring,
   nested substring argument, and bad substring length cases.
@@ -418,16 +431,16 @@ from this plan.
 | Area | Current Behavior | Required Direction |
 | --- | --- | --- |
 | Dotted names | Parser and evaluator internals now use flat dotted identifiers for server variables. Some public implementation packages still expose older generic-language concepts during transition. | Finish removing nested object lookup assumptions and move implementation packages under `internal/` in the cleanup slice. |
-| `build.env()` | `build.env("NAME")` parses as a flat function identifier and evaluates through the root adapter. | Expand validator and conformance coverage for server-compatible nullable return behavior in Slice 5. |
-| Ternary syntax | Ternaries parse with server precedence, evaluate lazily, and now type-check branch compatibility through the root API. | Expand conformance coverage for every upstream ternary type-checker case before marking Slice 4 complete. |
+| `build.env()` | `build.env("NAME")` parses as a flat function identifier, type-checks with the server's string return token type, and evaluates to `null` for absent variables through the root adapter. | Expand validator and conformance coverage for the full server env matrix in Slice 5. |
+| Ternary syntax | Ternaries parse with server precedence, evaluate lazily, use Ruby truthiness for nil runtime conditions, and type-check branch compatibility without local nullable-union narrowing. | Expand conformance coverage for every upstream ternary type-checker case before marking Slice 4 complete. |
 | Shell substitution | Shell expansion operands and double-quoted interpolation evaluate for the upstream set/unset/empty/default/alternate/required/substring matrix. | Finish exact string escape parity, shell fallback string grammar coverage, and package-local parser/evaluator tests for edge cases beyond the current root tables. |
 | Scope | Callers pass arbitrary `object.Struct`. | Add server-style Buildkite assignment tables with documented variables and context availability. |
-| Nullable values | Missing nested properties error. | Documented nullable variables should be present as `null` for the right contexts. Truly unknown properties should still fail closed. |
+| Nullable values | Documented nullable Buildkite assignments are present as runtime `null` while keeping their server-declared type for validation. Truly unknown variables still fail closed. | Finish the exhaustive context matrix and lazy variable coverage so every documented nullable field is covered in every entrypoint. |
 | Context restrictions | No context kind. | Enforce pipeline, step, build-notification, and step-notification variable availability. |
 | Final result | Root `Validate`/`Evaluate` now type-check for a boolean final result; lower-level `Eval` still returns any `object.Object` during transition. | Move implementation packages under `internal/` and keep root `(bool, error)` as the supported Buildkite surface. |
 | Regex syntax | regexp2 accepts some features the server rejects. | Keep regexp2 only with a server-compatible validator for flags and unsupported constructs. |
 | Divergent operators | `@>` no longer tokenizes as a Buildkite parser operator. Some lower-level compatibility constants may remain until cleanup. | Remove remaining dead `@>` constants or generic-language artifacts in the cleanup slice. |
-| Type mismatch semantics | Local behavior exists but is not server-proven. | Build a server-derived matrix for equality, regex matching, `includes`, `!`, missing values, and function argument errors. |
+| Type mismatch semantics | Core equality, regex matching, `includes`, `!`, logical, ternary, enum, null, and array comparison cases now use server-derived type-checking behavior. | Finish the remaining server-derived matrix for custom functions, lazy variables, function argument validators, and exact error categories. |
 | Conformance | Root package tests are now split into source-tagged table-driven files for syntax, evaluation, regex, context, and root API error behavior. The tables seed docs and upstream spec coverage but do not yet port every blocked upstream group. | Expand the tables in each implementation slice until every manifest group is `ported`, `superseded`, or `intentionally_excluded` before claiming parity. |
 
 ## Server Syntax And Context Surface To Cover

@@ -184,30 +184,6 @@ func TestConditionalSyntaxErrors(t *testing.T) {
 			wantError:  ErrorKindValidation,
 		},
 		{
-			name:       "validation rejects array equality",
-			source:     upstreamParserSpec,
-			expression: `["a"] == ["a"]`,
-			wantError:  ErrorKindValidation,
-		},
-		{
-			name:       "validation rejects array null equality",
-			source:     upstreamParserSpec,
-			expression: `["a"] == null`,
-			wantError:  ErrorKindValidation,
-		},
-		{
-			name:       "validation rejects null array equality",
-			source:     upstreamParserSpec,
-			expression: `null == ["a"]`,
-			wantError:  ErrorKindValidation,
-		},
-		{
-			name:       "validation rejects null array variable equality",
-			source:     upstreamParserSpec,
-			expression: `null == build.creator.teams`,
-			wantError:  ErrorKindValidation,
-		},
-		{
 			name:       "validation rejects invalid enum literal",
 			source:     upstreamBuildConditionSpec,
 			expression: `build.state == "faillled"`,

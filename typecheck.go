@@ -25,9 +25,8 @@ type enumType struct {
 }
 
 type valueType struct {
-	kind     valueKind
-	enum     *enumType
-	nullable bool
+	kind valueKind
+	enum *enumType
 }
 
 type functionSignature struct {
@@ -50,7 +49,7 @@ func typeCheckExpression(expr ast.Expression, ctx Context) error {
 	if err != nil {
 		return err
 	}
-	if (got.kind != kindBool && got.kind != kindUnknown) || got.nullable {
+	if got.kind != kindBool && got.kind != kindUnknown {
 		return &Error{
 			Kind:    ErrorKindResult,
 			Message: fmt.Sprintf("expected boolean result, got %s", got.describe()),
@@ -70,7 +69,7 @@ func (c typeChecker) check(expr ast.Expression) (valueType, error) {
 	case *ast.StringLiteral:
 		return valueType{kind: kindString}, nil
 	case *ast.ShellExpansion:
-		return nullableStringType(), nil
+		return stringType(), nil
 	case *ast.Regexp:
 		return valueType{kind: kindRegexp}, nil
 	case *ast.Identifier:
@@ -83,7 +82,7 @@ func (c typeChecker) check(expr ast.Expression) (valueType, error) {
 		if expr.Operator != "!" {
 			return valueType{kind: kindUnknown}, validationError("`%s` is not a prefix operator", expr.Operator)
 		}
-		if err := c.expectAny(expr.Right, kindBool, kindNull); err != nil {
+		if err := c.expect(expr.Right, kindBool); err != nil {
 			return valueType{kind: kindUnknown}, err
 		}
 		return valueType{kind: kindBool}, nil
@@ -127,14 +126,7 @@ func (c typeChecker) checkInfix(expr *ast.InfixExpression) (valueType, error) {
 		if err := c.expect(expr.Left, kindBool); err != nil {
 			return valueType{kind: kindUnknown}, err
 		}
-		if logicalExpressionShortCircuits(expr) {
-			return valueType{kind: kindBool}, nil
-		}
-		rightChecker := c
-		if name, ok := nonNullGuardForRHS(expr.Operator, expr.Left); ok {
-			rightChecker = c.withNonNullableVariable(name)
-		}
-		if err := rightChecker.expect(expr.Right, kindBool); err != nil {
+		if err := c.expect(expr.Right, kindBool); err != nil {
 			return valueType{kind: kindUnknown}, err
 		}
 		return valueType{kind: kindBool}, nil
@@ -152,16 +144,7 @@ func (c typeChecker) checkConditional(expr *ast.ConditionalExpression) (valueTyp
 	if err := c.expect(expr.Condition, kindBool); err != nil {
 		return valueType{kind: kindUnknown}, err
 	}
-	consequenceChecker := c
-	alternativeChecker := c
-	if name, consequenceIsNonNull, ok := nonNullGuardForConditional(expr.Condition); ok {
-		if consequenceIsNonNull {
-			consequenceChecker = c.withNonNullableVariable(name)
-		} else {
-			alternativeChecker = c.withNonNullableVariable(name)
-		}
-	}
-	return consequenceChecker.checkCompatibleTypesWith(alternativeChecker, expr.Consequence, expr.Alternative, true)
+	return c.checkCompatibleTypes(expr.Consequence, expr.Alternative)
 }
 
 func (c typeChecker) checkCall(expr *ast.CallExpression) (valueType, error) {
@@ -186,84 +169,45 @@ func (c typeChecker) checkCall(expr *ast.CallExpression) (valueType, error) {
 }
 
 func (c typeChecker) checkComparisonTypes(left, right ast.Expression) (valueType, error) {
-	return c.checkCompatibleTypes(left, right, false)
+	return c.checkCompatibleTypes(left, right)
 }
 
-func (c typeChecker) checkCompatibleTypes(left, right ast.Expression, allowArrays bool) (valueType, error) {
-	return c.checkCompatibleTypesWith(c, left, right, allowArrays)
-}
-
-func (c typeChecker) checkCompatibleTypesWith(rightChecker typeChecker, left, right ast.Expression, allowArrays bool) (valueType, error) {
+func (c typeChecker) checkCompatibleTypes(left, right ast.Expression) (valueType, error) {
 	leftType, err := c.check(left)
 	if err != nil {
 		return valueType{kind: kindUnknown}, err
 	}
 
-	rightType, err := rightChecker.check(right)
+	rightType, err := c.check(right)
 	if err != nil {
 		return valueType{kind: kindUnknown}, err
 	}
-	if !allowArrays && leftType.kind == kindStringArray {
-		return valueType{kind: kindUnknown}, validationError("unexpected type: expected scalar comparison operand but found %s", leftType.describe())
-	}
-	if !allowArrays && rightType.kind == kindStringArray {
-		return valueType{kind: kindUnknown}, validationError("unexpected type: expected scalar comparison operand but found %s", rightType.describe())
-	}
 	if leftType.kind == kindNull || leftType.kind == kindUnknown {
-		return rightType.withNull(), nil
+		return rightType, nil
 	}
 	if rightType.kind == kindNull || rightType.kind == kindUnknown {
-		return leftType.withNull(), nil
+		return leftType, nil
 	}
 	if leftType.kind == kindStringArray || rightType.kind == kindStringArray {
 		if leftType.kind != rightType.kind {
 			return valueType{kind: kindUnknown}, validationError("unexpected type: expected %s but found %s", leftType.describe(), rightType.describe())
 		}
-		return leftType.withNullabilityFrom(rightType), nil
+		return leftType, nil
 	}
 	if leftType.enum != nil {
-		if rightType.enum != nil {
-			if !leftType.enum.compatible(rightType.enum) {
-				return valueType{kind: kindUnknown}, validationError("unexpected type: expected %s but found %s", leftType.describe(), rightType.describe())
-			}
-			return leftType.withNullabilityFrom(rightType), nil
-		}
 		if err := c.expectAny(right, kindString, kindNull); err != nil {
 			return valueType{kind: kindUnknown}, err
 		}
 		if literal, ok := staticStringLiteral(right); ok && !leftType.enum.includes(literal.Value) {
 			return valueType{kind: kindUnknown}, validationError("%q is not a valid `%s`", literal.Value, identifierName(left))
 		}
-		return leftType.withNullabilityFrom(rightType), nil
-	}
-
-	if rightType.enum != nil && leftType.kind == kindString {
-		if literal, ok := staticStringLiteral(left); ok && !rightType.enum.includes(literal.Value) {
-			return valueType{kind: kindUnknown}, validationError("%q is not a valid `%s`", literal.Value, identifierName(right))
-		}
-		return rightType.withNullabilityFrom(leftType), nil
+		return leftType, nil
 	}
 
 	if err := c.expectAny(right, leftType.kind, kindNull); err != nil {
 		return valueType{kind: kindUnknown}, err
 	}
-	return leftType.withNullabilityFrom(rightType), nil
-}
-
-func (c typeChecker) withNonNullableVariable(name string) typeChecker {
-	typ, ok := c.variables[name]
-	if !ok || !typ.nullable {
-		return c
-	}
-
-	variables := make(map[string]valueType, len(c.variables))
-	for key, value := range c.variables {
-		variables[key] = value
-	}
-	typ.nullable = false
-	variables[name] = typ
-	c.variables = variables
-	return c
+	return leftType, nil
 }
 
 func (c typeChecker) expect(expr ast.Expression, expected valueKind) error {
@@ -278,12 +222,8 @@ func (c typeChecker) expectAny(expr ast.Expression, expected ...valueKind) error
 	if actual.kind == kindUnknown {
 		return nil
 	}
-	allowsNull := containsKind(expected, kindNull)
 	for _, expectedKind := range expected {
 		if actual.enum == nil && actual.kind == expectedKind {
-			if actual.nullable && !allowsNull {
-				continue
-			}
 			return nil
 		}
 	}
@@ -299,7 +239,7 @@ func (c typeChecker) expectArrayElement(expr ast.Expression) error {
 	if actual.kind == kindUnknown {
 		return nil
 	}
-	if actual.kind == kindString && !actual.nullable {
+	if actual.kind == kindString && actual.enum == nil {
 		return nil
 	}
 	return validationError("unexpected type: expected string but found %s", actual.describe())
@@ -314,7 +254,11 @@ func (c typeChecker) expectIncludesRight(expr ast.Expression) error {
 		return nil
 	}
 	switch actual.kind {
-	case kindString, kindRegexp, kindNull:
+	case kindString:
+		if actual.enum == nil {
+			return nil
+		}
+	case kindRegexp, kindNull:
 		return nil
 	}
 	return validationError("unexpected type: expected string, regular expression, or null but found %s", actual.describe())
@@ -388,7 +332,7 @@ func functionTypes() map[string]functionSignature {
 		},
 		"build.env": {
 			args: []valueKind{kindString},
-			ret:  nullableStringType(),
+			ret:  stringType(),
 		},
 	}
 }
@@ -397,14 +341,7 @@ func stringType() valueType {
 	return valueType{kind: kindString}
 }
 
-func nullableStringType() valueType {
-	return valueType{kind: kindString, nullable: true}
-}
-
 func stringTypeFor(value *string) valueType {
-	if value == nil {
-		return nullableStringType()
-	}
 	return stringType()
 }
 
@@ -416,14 +353,7 @@ func boolType() valueType {
 	return valueType{kind: kindBool}
 }
 
-func nullableBoolType() valueType {
-	return valueType{kind: kindBool, nullable: true}
-}
-
 func boolTypeFor(value *bool) valueType {
-	if value == nil {
-		return nullableBoolType()
-	}
 	return boolType()
 }
 
@@ -431,14 +361,7 @@ func stringArrayType() valueType {
 	return valueType{kind: kindStringArray}
 }
 
-func nullableStringArrayType() valueType {
-	return valueType{kind: kindStringArray, nullable: true}
-}
-
 func stringArrayTypeFor(values []string) valueType {
-	if values == nil {
-		return nullableStringArrayType()
-	}
 	return stringArrayType()
 }
 
@@ -454,11 +377,7 @@ func enumValueType(name string, values ...string) valueType {
 }
 
 func enumValueTypeFor(value *string, name string, values ...string) valueType {
-	typ := enumValueType(name, values...)
-	if value == nil {
-		typ.nullable = true
-	}
-	return typ
+	return enumValueType(name, values...)
 }
 
 func stepString(step *Step, value func(*Step) *string) *string {
@@ -470,39 +389,14 @@ func stepString(step *Step, value func(*Step) *string) *string {
 
 func (t valueType) describe() string {
 	if t.enum != nil {
-		if t.nullable {
-			return "nullable " + t.enum.name + " enumeration value"
-		}
 		return t.enum.name + " enumeration value"
 	}
-	if t.nullable {
-		return "nullable " + string(t.kind)
-	}
 	return string(t.kind)
-}
-
-func (t valueType) withNull() valueType {
-	if t.kind == kindUnknown {
-		return t
-	}
-	t.nullable = true
-	return t
-}
-
-func (t valueType) withNullabilityFrom(other valueType) valueType {
-	if other.kind == kindNull || other.nullable {
-		return t.withNull()
-	}
-	return t
 }
 
 func (e enumType) includes(value string) bool {
 	_, ok := e.values[value]
 	return ok
-}
-
-func (e enumType) compatible(other *enumType) bool {
-	return other != nil && e.name == other.name
 }
 
 func validationError(format string, args ...any) *Error {
@@ -528,15 +422,6 @@ func describeKinds(kinds []valueKind) string {
 	return out
 }
 
-func containsKind(kinds []valueKind, target valueKind) bool {
-	for _, kind := range kinds {
-		if kind == target {
-			return true
-		}
-	}
-	return false
-}
-
 func runtimeStringLiteral(literal *ast.StringLiteral) bool {
 	return literal.Token.Flags == `"` && evaluator.ContainsShellExpansion(literal.Value)
 }
@@ -547,63 +432,6 @@ func staticStringLiteral(expr ast.Expression) (*ast.StringLiteral, bool) {
 		return nil, false
 	}
 	return literal, true
-}
-
-func logicalExpressionShortCircuits(expr *ast.InfixExpression) bool {
-	left, ok := expr.Left.(*ast.Boolean)
-	if !ok {
-		return false
-	}
-
-	return (expr.Operator == "&&" && !left.Value) || (expr.Operator == "||" && left.Value)
-}
-
-func nonNullGuardForRHS(operator string, left ast.Expression) (string, bool) {
-	guard, ok := left.(*ast.InfixExpression)
-	if !ok {
-		return "", false
-	}
-	switch {
-	case operator == "&&" && guard.Operator == "!=":
-		return nullComparedIdentifier(guard.Left, guard.Right)
-	case operator == "||" && guard.Operator == "==":
-		return nullComparedIdentifier(guard.Left, guard.Right)
-	default:
-		return "", false
-	}
-}
-
-func nonNullGuardForConditional(condition ast.Expression) (name string, consequenceIsNonNull bool, ok bool) {
-	guard, ok := condition.(*ast.InfixExpression)
-	if !ok {
-		return "", false, false
-	}
-	name, ok = nullComparedIdentifier(guard.Left, guard.Right)
-	if !ok {
-		return "", false, false
-	}
-	switch guard.Operator {
-	case "!=":
-		return name, true, true
-	case "==":
-		return name, false, true
-	default:
-		return "", false, false
-	}
-}
-
-func nullComparedIdentifier(left, right ast.Expression) (string, bool) {
-	if _, ok := right.(*ast.Null); ok {
-		if ident, ok := left.(*ast.Identifier); ok {
-			return ident.Value, true
-		}
-	}
-	if _, ok := left.(*ast.Null); ok {
-		if ident, ok := right.(*ast.Identifier); ok {
-			return ident.Value, true
-		}
-	}
-	return "", false
 }
 
 func identifierName(expr ast.Expression) string {
