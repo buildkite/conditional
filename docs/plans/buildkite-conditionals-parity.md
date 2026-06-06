@@ -961,6 +961,9 @@ Current Slice 6 progress:
   inside character classes, unsupported-looking tokens inside regex comments,
   Ruby-compatible first-`)` regex comment termination, and bounded possessive
   quantifiers such as `{1,3}+` and `{2,}+`.
+- A focused parser regression lowers regexp2's match timeout for a catastrophic
+  backtracking pattern and proves matches fail with a timeout instead of running
+  unbounded.
 
 ### Slice 7: Divergence Removal And Codebase Cleanup
 
