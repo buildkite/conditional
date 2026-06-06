@@ -84,6 +84,15 @@ func TestConditionalEvaluationSemantics(t *testing.T) {
 			want: true,
 		},
 		{
+			name:       "documented started failing build state",
+			source:     docsConditionalsSource,
+			expression: `build.state == "started_failing"`,
+			ctx: Context{
+				Build: Build{State: str("started_failing")},
+			},
+			want: true,
+		},
+		{
 			name:       "null includes string evaluates false",
 			source:     upstreamEvaluatorSpec,
 			expression: `null includes "fruit"`,

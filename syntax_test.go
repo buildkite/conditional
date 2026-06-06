@@ -177,6 +177,24 @@ func TestConditionalSyntaxErrors(t *testing.T) {
 			expression: `build.state == "faillled"`,
 			wantError:  ErrorKindValidation,
 		},
+		{
+			name:       "validation rejects reversed enum comparison",
+			source:     upstreamParserSpec,
+			expression: `"faillled" == build.state`,
+			wantError:  ErrorKindValidation,
+		},
+		{
+			name:       "validation rejects enum in string regex position",
+			source:     upstreamParserSpec,
+			expression: `build.state =~ /pass/`,
+			wantError:  ErrorKindValidation,
+		},
+		{
+			name:       "validation rejects ternary branch type mismatch",
+			source:     upstreamParserSpec,
+			expression: `(true ? "string" : 123) == null`,
+			wantError:  ErrorKindValidation,
+		},
 	}
 
 	runValidateCases(t, tests)

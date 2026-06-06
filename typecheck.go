@@ -130,7 +130,7 @@ func (c typeChecker) checkInfix(expr *ast.InfixExpression) (valueType, error) {
 		}
 		return valueType{kind: kindBool}, nil
 	case "==", "!=":
-		if err := c.checkComparisonTypes(expr.Left, expr.Right); err != nil {
+		if _, err := c.checkComparisonTypes(expr.Left, expr.Right); err != nil {
 			return valueType{kind: kindUnknown}, err
 		}
 		return valueType{kind: kindBool}, nil
@@ -143,10 +143,7 @@ func (c typeChecker) checkConditional(expr *ast.ConditionalExpression) (valueTyp
 	if err := c.expect(expr.Condition, kindBool); err != nil {
 		return valueType{kind: kindUnknown}, err
 	}
-	if err := c.checkComparisonTypes(expr.Consequence, expr.Alternative); err != nil {
-		return valueType{kind: kindUnknown}, err
-	}
-	return c.check(expr.Consequence)
+	return c.checkComparisonTypes(expr.Consequence, expr.Alternative)
 }
 
 func (c typeChecker) checkCall(expr *ast.CallExpression) (valueType, error) {
@@ -170,28 +167,30 @@ func (c typeChecker) checkCall(expr *ast.CallExpression) (valueType, error) {
 	return signature.ret, nil
 }
 
-func (c typeChecker) checkComparisonTypes(left, right ast.Expression) error {
+func (c typeChecker) checkComparisonTypes(left, right ast.Expression) (valueType, error) {
 	leftType, err := c.check(left)
 	if err != nil {
-		return err
+		return valueType{kind: kindUnknown}, err
 	}
 
 	if leftType.kind == kindNull || leftType.kind == kindUnknown {
-		_, err := c.check(right)
-		return err
+		return c.check(right)
 	}
 
 	if leftType.enum != nil {
 		if err := c.expectAny(right, kindString, kindNull); err != nil {
-			return err
+			return valueType{kind: kindUnknown}, err
 		}
 		if literal, ok := right.(*ast.StringLiteral); ok && !leftType.enum.includes(literal.Value) {
-			return validationError("%q is not a valid `%s`", literal.Value, identifierName(left))
+			return valueType{kind: kindUnknown}, validationError("%q is not a valid `%s`", literal.Value, identifierName(left))
 		}
-		return nil
+		return leftType, nil
 	}
 
-	return c.expectAny(right, leftType.kind, kindNull)
+	if err := c.expectAny(right, leftType.kind, kindNull); err != nil {
+		return valueType{kind: kindUnknown}, err
+	}
+	return leftType, nil
 }
 
 func (c typeChecker) expect(expr ast.Expression, expected valueKind) error {
@@ -218,7 +217,7 @@ func (c typeChecker) expectAny(expr ast.Expression, expected ...valueKind) error
 func variableTypes(entryPoint EntryPoint) map[string]valueType {
 	variables := map[string]valueType{
 		"build.id":                            stringType(),
-		"build.state":                         enumValueType("build state", "creating", "started", "running", "scheduled", "blocked", "passed", "failing", "failed", "canceling", "canceled", "skipped", "not_run"),
+		"build.state":                         enumValueType("build state", "creating", "started", "running", "scheduled", "blocked", "passed", "failing", "failed", "started_failing", "canceling", "canceled", "skipped", "not_run"),
 		"build.fixed":                         boolType(),
 		"build.blocked_state":                 enumValueType("build blocked state", "failed", "passed", "running"),
 		"build.source":                        enumValueType("build source", "api", "ui", "webhook", "trigger_job", "schedule", "pipeline_trigger"),
