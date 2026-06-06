@@ -93,6 +93,15 @@ func TestConditionalEvaluationSemantics(t *testing.T) {
 			want: true,
 		},
 		{
+			name:       "array literal accepts enum string variable",
+			source:     upstreamEvaluatorSpec,
+			expression: `[build.state] includes "passed"`,
+			ctx: Context{
+				Build: Build{State: str("passed")},
+			},
+			want: true,
+		},
+		{
 			name:       "documented started failing build state",
 			source:     docsConditionalsSource,
 			expression: `build.state == "started_failing"`,
@@ -251,6 +260,12 @@ func TestConditionalEvaluationSemantics(t *testing.T) {
 			want:       false,
 		},
 		{
+			name:       "nullable pull request boolean can be coalesced with ternary",
+			source:     docsConditionalsSource,
+			expression: `build.pull_request.draft == null ? false : build.pull_request.draft`,
+			want:       false,
+		},
+		{
 			name:       "nullable pull request boolean fails before logical evaluation",
 			source:     docsConditionalsSource,
 			expression: `build.pull_request.draft || false`,
@@ -360,6 +375,13 @@ func TestConditionalShellSubstitutionEvaluation(t *testing.T) {
 			name:       "substring offset only",
 			source:     upstreamEvaluatorSpec,
 			expression: `${branch:2} == "in"`,
+			ctx:        ctx,
+			want:       true,
+		},
+		{
+			name:       "substring negative offset",
+			source:     upstreamEvaluatorSpec,
+			expression: `${branch: -1} == "n"`,
 			ctx:        ctx,
 			want:       true,
 		},

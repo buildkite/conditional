@@ -95,7 +95,7 @@ func (c typeChecker) check(expr ast.Expression) (valueType, error) {
 		return c.checkCall(expr)
 	case *ast.ArrayLiteral:
 		for _, element := range expr.Elements {
-			if err := c.expect(element, kindString); err != nil {
+			if err := c.expectArrayElement(element); err != nil {
 				return valueType{kind: kindUnknown}, err
 			}
 		}
@@ -152,7 +152,16 @@ func (c typeChecker) checkConditional(expr *ast.ConditionalExpression) (valueTyp
 	if err := c.expect(expr.Condition, kindBool); err != nil {
 		return valueType{kind: kindUnknown}, err
 	}
-	return c.checkCompatibleTypes(expr.Consequence, expr.Alternative, true)
+	consequenceChecker := c
+	alternativeChecker := c
+	if name, consequenceIsNonNull, ok := nonNullGuardForConditional(expr.Condition); ok {
+		if consequenceIsNonNull {
+			consequenceChecker = c.withNonNullableVariable(name)
+		} else {
+			alternativeChecker = c.withNonNullableVariable(name)
+		}
+	}
+	return consequenceChecker.checkCompatibleTypesWith(alternativeChecker, expr.Consequence, expr.Alternative, true)
 }
 
 func (c typeChecker) checkCall(expr *ast.CallExpression) (valueType, error) {
@@ -181,12 +190,16 @@ func (c typeChecker) checkComparisonTypes(left, right ast.Expression) (valueType
 }
 
 func (c typeChecker) checkCompatibleTypes(left, right ast.Expression, allowArrays bool) (valueType, error) {
+	return c.checkCompatibleTypesWith(c, left, right, allowArrays)
+}
+
+func (c typeChecker) checkCompatibleTypesWith(rightChecker typeChecker, left, right ast.Expression, allowArrays bool) (valueType, error) {
 	leftType, err := c.check(left)
 	if err != nil {
 		return valueType{kind: kindUnknown}, err
 	}
 
-	rightType, err := c.check(right)
+	rightType, err := rightChecker.check(right)
 	if err != nil {
 		return valueType{kind: kindUnknown}, err
 	}
@@ -276,6 +289,20 @@ func (c typeChecker) expectAny(expr ast.Expression, expected ...valueKind) error
 	}
 
 	return validationError("unexpected type: expected %s but found %s", describeKinds(expected), actual.describe())
+}
+
+func (c typeChecker) expectArrayElement(expr ast.Expression) error {
+	actual, err := c.check(expr)
+	if err != nil {
+		return err
+	}
+	if actual.kind == kindUnknown {
+		return nil
+	}
+	if actual.kind == kindString && !actual.nullable {
+		return nil
+	}
+	return validationError("unexpected type: expected string but found %s", actual.describe())
 }
 
 func (c typeChecker) expectIncludesRight(expr ast.Expression) error {
@@ -506,6 +533,25 @@ func nonNullGuardForRHS(operator string, left ast.Expression) (string, bool) {
 		return nullComparedIdentifier(guard.Left, guard.Right)
 	default:
 		return "", false
+	}
+}
+
+func nonNullGuardForConditional(condition ast.Expression) (name string, consequenceIsNonNull bool, ok bool) {
+	guard, ok := condition.(*ast.InfixExpression)
+	if !ok {
+		return "", false, false
+	}
+	name, ok = nullComparedIdentifier(guard.Left, guard.Right)
+	if !ok {
+		return "", false, false
+	}
+	switch guard.Operator {
+	case "!=":
+		return name, true, true
+	case "==":
+		return name, false, true
+	default:
+		return "", false, false
 	}
 }
 

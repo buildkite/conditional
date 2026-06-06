@@ -9,7 +9,7 @@ import (
 	"github.com/buildkite/conditional/object"
 )
 
-var shellIntegerPattern = regexp.MustCompile(`^[0-9]+$`)
+var shellIntegerPattern = regexp.MustCompile(`^-?[0-9]+$`)
 
 type EnvScope interface {
 	LookupEnv(key string) (string, bool)
@@ -163,6 +163,12 @@ func evalShellSubstring(name string, raw string, env EnvScope) (string, bool, er
 	}
 
 	runes := []rune(base)
+	if x < 0 {
+		x = len(runes) + x
+	}
+	if x < 0 {
+		x = 0
+	}
 	if x >= len(runes) {
 		return "", true, nil
 	}
@@ -172,10 +178,17 @@ func evalShellSubstring(name string, raw string, env EnvScope) (string, bool, er
 		if err != nil {
 			return "", false, err
 		}
-		end = x + y
+		if y < 0 {
+			end = len(runes) + y
+		} else {
+			end = x + y
+		}
 	}
 	if end > len(runes) {
 		end = len(runes)
+	}
+	if end < x {
+		end = x
 	}
 	return string(runes[x:end]), true, nil
 }
@@ -185,6 +198,7 @@ func evalShellInteger(raw string, env EnvScope) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	value = strings.TrimSpace(value)
 	if !shellIntegerPattern.MatchString(value) {
 		return 0, fmt.Errorf("substring operation requires integer argument, not %q", value)
 	}
