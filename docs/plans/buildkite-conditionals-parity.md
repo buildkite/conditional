@@ -893,6 +893,10 @@ Current Slice 5 progress:
   by `build.source_event == "pull_request"` and otherwise exposes the
   caller-provided webhook payload label without also requiring a
   `build.source_action`.
+- Context assignments now match the server's `.presence` nullability for blank
+  `build.tag`, `build.message`, `build.author.name`, `build.author.email`,
+  `pipeline.default_branch`, and `pipeline.repository`, while adjacent plain
+  string assignments keep caller-provided blank strings.
 - `BUILDKITE_GIT_DIFF_BASE` is gated by explicit merge-queue build state, then
   uses either the merge queue base branch or base commit according to the
   pipeline provider setting.
