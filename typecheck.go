@@ -82,7 +82,7 @@ func (c typeChecker) check(expr ast.Expression) (valueType, error) {
 		if expr.Operator != "!" {
 			return valueType{kind: kindUnknown}, validationError("`%s` is not a prefix operator", expr.Operator)
 		}
-		if err := c.expect(expr.Right, kindBool); err != nil {
+		if err := c.expectAny(expr.Right, kindBool, kindNull); err != nil {
 			return valueType{kind: kindUnknown}, err
 		}
 		return valueType{kind: kindBool}, nil
@@ -174,14 +174,22 @@ func (c typeChecker) checkComparisonTypes(left, right ast.Expression) (valueType
 		return valueType{kind: kindUnknown}, err
 	}
 
-	if leftType.kind == kindNull || leftType.kind == kindUnknown {
-		rightType, err := c.check(right)
-		return rightType.withNull(), err
+	rightType, err := c.check(right)
+	if err != nil {
+		return valueType{kind: kindUnknown}, err
 	}
 	if leftType.kind == kindStringArray {
 		return valueType{kind: kindUnknown}, validationError("unexpected type: expected scalar comparison operand but found %s", leftType.describe())
 	}
-
+	if rightType.kind == kindStringArray {
+		return valueType{kind: kindUnknown}, validationError("unexpected type: expected scalar comparison operand but found %s", rightType.describe())
+	}
+	if leftType.kind == kindNull || leftType.kind == kindUnknown {
+		return rightType.withNull(), nil
+	}
+	if rightType.kind == kindNull || rightType.kind == kindUnknown {
+		return leftType.withNull(), nil
+	}
 	if leftType.enum != nil {
 		if err := c.expectAny(right, kindString, kindNull); err != nil {
 			return valueType{kind: kindUnknown}, err
@@ -189,27 +197,20 @@ func (c typeChecker) checkComparisonTypes(left, right ast.Expression) (valueType
 		if literal, ok := right.(*ast.StringLiteral); ok && !leftType.enum.includes(literal.Value) {
 			return valueType{kind: kindUnknown}, validationError("%q is not a valid `%s`", literal.Value, identifierName(left))
 		}
-		return leftType, nil
+		return leftType.withNullabilityFrom(rightType), nil
 	}
 
-	rightType, err := c.check(right)
-	if err != nil {
-		return valueType{kind: kindUnknown}, err
-	}
 	if rightType.enum != nil && leftType.kind == kindString {
 		if literal, ok := left.(*ast.StringLiteral); ok && !rightType.enum.includes(literal.Value) {
 			return valueType{kind: kindUnknown}, validationError("%q is not a valid `%s`", literal.Value, identifierName(right))
 		}
-		return rightType, nil
-	}
-	if rightType.kind == kindStringArray {
-		return valueType{kind: kindUnknown}, validationError("unexpected type: expected scalar comparison operand but found %s", rightType.describe())
+		return rightType.withNullabilityFrom(leftType), nil
 	}
 
 	if err := c.expectAny(right, leftType.kind, kindNull); err != nil {
 		return valueType{kind: kindUnknown}, err
 	}
-	return leftType, nil
+	return leftType.withNullabilityFrom(rightType), nil
 }
 
 func (c typeChecker) expect(expr ast.Expression, expected valueKind) error {
@@ -381,6 +382,13 @@ func (t valueType) withNull() valueType {
 		return t
 	}
 	t.nullable = true
+	return t
+}
+
+func (t valueType) withNullabilityFrom(other valueType) valueType {
+	if other.kind == kindNull || other.nullable {
+		return t.withNull()
+	}
 	return t
 }
 

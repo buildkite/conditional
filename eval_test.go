@@ -189,6 +189,18 @@ func TestConditionalEvaluationSemantics(t *testing.T) {
 			wantError:  ErrorKindResult,
 		},
 		{
+			name:       "nullable ternary alternative result fails closed",
+			source:     upstreamParserSpec,
+			expression: `false ? true : null`,
+			wantError:  ErrorKindResult,
+		},
+		{
+			name:       "nullable pull request boolean can be negated",
+			source:     docsConditionalsSource,
+			expression: `!build.pull_request.draft`,
+			want:       true,
+		},
+		{
 			name:       "nullable pull request boolean fails before logical evaluation",
 			source:     docsConditionalsSource,
 			expression: `build.pull_request.draft || false`,
