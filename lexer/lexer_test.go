@@ -26,19 +26,24 @@ func TestLexingIndividualTerms(t *testing.T) {
 	})
 }
 
+func TestLexingUnterminatedStrings(t *testing.T) {
+	expectTokens(t, `"from prison \`, []tokenExpectation{
+		{token.ILLEGAL, `from prison \`},
+	})
+	expectTokens(t, `'mad lad opening single quotes`, []tokenExpectation{
+		{token.ILLEGAL, `mad lad opening single quotes`},
+	})
+}
+
 func TestLexingValueComparisons(t *testing.T) {
 	expectTokens(t, `build.branch == "master"`, []tokenExpectation{
-		{token.IDENT, "build"},
-		{token.DOT, "."},
-		{token.IDENT, "branch"},
+		{token.IDENT, "build.branch"},
 		{token.EQ, "=="},
 		{token.STRING, "master"},
 	})
 	expectTokens(t, `(build.tag != "v1.0.0")`, []tokenExpectation{
 		{token.LPAREN, "("},
-		{token.IDENT, "build"},
-		{token.DOT, "."},
-		{token.IDENT, "tag"},
+		{token.IDENT, "build.tag"},
 		{token.NOT_EQ, "!="},
 		{token.STRING, "v1.0.0"},
 		{token.RPAREN, ")"},
@@ -70,34 +75,34 @@ func TestLexingFunctionCalls(t *testing.T) {
 		{token.EQ, "=="},
 		{token.STRING, "FOO"},
 	})
+	expectTokens(t, `build.env("FOO") == "BAR"`, []tokenExpectation{
+		{token.IDENT, "build.env"},
+		{token.LPAREN, "("},
+		{token.STRING, "FOO"},
+		{token.RPAREN, ")"},
+		{token.EQ, "=="},
+		{token.STRING, "BAR"},
+	})
 }
 
 func TestLexingRegexps(t *testing.T) {
 	expectTokens(t, `build.tag =~ /^v/`, []tokenExpectation{
-		{token.IDENT, "build"},
-		{token.DOT, "."},
-		{token.IDENT, "tag"},
+		{token.IDENT, "build.tag"},
 		{token.RE_EQ, "=~"},
 		{token.REGEXP, "^v"},
 	})
 	expectTokens(t, `build.branch =~ /^features\//`, []tokenExpectation{
-		{token.IDENT, "build"},
-		{token.DOT, "."},
-		{token.IDENT, "branch"},
+		{token.IDENT, "build.branch"},
 		{token.RE_EQ, "=~"},
 		{token.REGEXP, `^features\/`},
 	})
 	expectTokens(t, `build.branch =~ /\/release-123\$/`, []tokenExpectation{
-		{token.IDENT, "build"},
-		{token.DOT, "."},
-		{token.IDENT, "branch"},
+		{token.IDENT, "build.branch"},
 		{token.RE_EQ, "=~"},
 		{token.REGEXP, `\/release-123\$`},
 	})
 	expectTokens(t, `build.message !~ /\[skip tests\]/i`, []tokenExpectation{
-		{token.IDENT, "build"},
-		{token.DOT, "."},
-		{token.IDENT, "message"},
+		{token.IDENT, "build.message"},
 		{token.RE_NOT_EQ, "!~"},
 		{token.REGEXP, `\[skip tests\]`},
 	})
@@ -119,9 +124,7 @@ func TestLexingRegexps(t *testing.T) {
 
 func TestLexingUnterminatedRegexp(t *testing.T) {
 	expectTokens(t, `build.branch =~ /release`, []tokenExpectation{
-		{token.IDENT, "build"},
-		{token.DOT, "."},
-		{token.IDENT, "branch"},
+		{token.IDENT, "build.branch"},
 		{token.RE_EQ, "=~"},
 		{token.ILLEGAL, "release"},
 	})
@@ -129,22 +132,56 @@ func TestLexingUnterminatedRegexp(t *testing.T) {
 
 func TestLexingArrays(t *testing.T) {
 	expectTokens(t, `build.creator.teams includes "deploy"`, []tokenExpectation{
-		{token.IDENT, "build"},
-		{token.DOT, "."},
-		{token.IDENT, "creator"},
-		{token.DOT, "."},
-		{token.IDENT, "teams"},
+		{token.IDENT, "build.creator.teams"},
 		{token.INCLUDES, "includes"},
 		{token.STRING, "deploy"},
 	})
+}
+
+func TestLexingRejectsNonServerContainsOperator(t *testing.T) {
 	expectTokens(t, `["llamas", "alpacas"] @> "alpacas"`, []tokenExpectation{
 		{token.LBRACKET, "["},
 		{token.STRING, "llamas"},
 		{token.COMMA, ","},
 		{token.STRING, "alpacas"},
 		{token.RBRACKET, "]"},
-		{token.CONTAINS, "@>"},
+		{token.ILLEGAL, "@"},
+		{token.ILLEGAL, ">"},
 		{token.STRING, "alpacas"},
+	})
+}
+
+func TestLexingTernaries(t *testing.T) {
+	expectTokens(t, `true ? false : true`, []tokenExpectation{
+		{token.TRUE, "true"},
+		{token.QUESTION, "?"},
+		{token.FALSE, "false"},
+		{token.COLON, ":"},
+		{token.TRUE, "true"},
+	})
+}
+
+func TestLexingShellExpansions(t *testing.T) {
+	expectTokens(t, `$branch == "main"`, []tokenExpectation{
+		{token.SHELL, "$branch"},
+		{token.EQ, "=="},
+		{token.STRING, "main"},
+	})
+	expectTokens(t, `${branch:-main} == "main"`, []tokenExpectation{
+		{token.SHELL, "${branch:-main}"},
+		{token.EQ, "=="},
+		{token.STRING, "main"},
+	})
+	expectTokens(t, `${branch:${empty:-1}:${two+2}} == "ai"`, []tokenExpectation{
+		{token.SHELL, "${branch:${empty:-1}:${two+2}}"},
+		{token.EQ, "=="},
+		{token.STRING, "ai"},
+	})
+}
+
+func TestLexingUnterminatedShellExpansion(t *testing.T) {
+	expectTokens(t, `${branch:-main == "main"`, []tokenExpectation{
+		{token.ILLEGAL, `${branch:-main == "main"`},
 	})
 }
 

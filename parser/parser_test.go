@@ -144,7 +144,6 @@ func TestParsingInfixExpressions(t *testing.T) {
 		{"5 != 5", 5, "!=", 5},
 		{`"a" == "a"`, "a", "==", "a"},
 		{`"a" != "b"`, "a", "!=", "b"},
-		{"foo.bar", "foo", ".", "bar"},
 		{"foobar != barfoo", "foobar", "!=", "barfoo"},
 		{"true == true", true, "==", true},
 		{"true != false", true, "!=", false},
@@ -164,6 +163,97 @@ func TestParsingInfixExpressions(t *testing.T) {
 	}
 }
 
+func TestDottedIdentifierExpression(t *testing.T) {
+	tests := []string{
+		"foo.bar",
+		"foo.bar.baz",
+		"build.pull_request.repository.fork",
+	}
+
+	for _, input := range tests {
+		l := lexer.New(input)
+		p := New(l)
+		expr := p.Parse()
+		checkParserErrors(t, p)
+
+		ident, ok := expr.(*ast.Identifier)
+		if !ok {
+			t.Fatalf("expr is not ast.Identifier. got=%T", expr)
+		}
+		if ident.Value != input {
+			t.Fatalf("identifier value = %q, want %q", ident.Value, input)
+		}
+	}
+}
+
+func TestParserRejectsMalformedDottedIdentifiers(t *testing.T) {
+	tests := []string{
+		"foo.",
+		"foo..bar",
+	}
+
+	for _, input := range tests {
+		l := lexer.New(input)
+		p := New(l)
+		p.Parse()
+
+		if len(p.Errors()) == 0 {
+			t.Fatalf("expected parser errors for %q", input)
+		}
+	}
+}
+
+func TestParserRejectsUnterminatedStrings(t *testing.T) {
+	tests := []string{
+		`"from prison \`,
+		`'mad lad opening single quotes`,
+	}
+
+	for _, input := range tests {
+		l := lexer.New(input)
+		p := New(l)
+		p.Parse()
+
+		if len(p.Errors()) == 0 {
+			t.Fatalf("expected parser errors for %q", input)
+		}
+	}
+}
+
+func TestShellExpansionExpression(t *testing.T) {
+	tests := []string{
+		"$branch",
+		"${branch}",
+		"${branch:-main}",
+		"${branch:${empty:-1}:${two+2}}",
+	}
+
+	for _, input := range tests {
+		l := lexer.New(input)
+		p := New(l)
+		expr := p.Parse()
+		checkParserErrors(t, p)
+
+		expansion, ok := expr.(*ast.ShellExpansion)
+		if !ok {
+			t.Fatalf("expr is not ast.ShellExpansion. got=%T", expr)
+		}
+		if expansion.Raw != input {
+			t.Fatalf("shell expansion raw = %q, want %q", expansion.Raw, input)
+		}
+	}
+}
+
+func TestParserRejectsUnterminatedShellExpansion(t *testing.T) {
+	l := lexer.New(`${branch:-main == "main"`)
+	p := New(l)
+	p.Parse()
+
+	if len(p.Errors()) == 0 {
+		t.Fatalf("expected parser errors")
+	}
+}
+
 func TestOperatorPrecedenceParsing(t *testing.T) {
 	tests := []struct {
 		input    string
@@ -173,12 +263,14 @@ func TestOperatorPrecedenceParsing(t *testing.T) {
 		{"true", "true"},
 		{"false", "false"},
 		{"!(true == true)", "(!(true == true))"},
-		{"foo.bar.baz == true", "(((foo.bar).baz) == true)"},
-		{"foo.bar == true && bar.baz == false", "(((foo.bar) == true) && ((bar.baz) == false))"},
+		{"foo.bar.baz == true", "(foo.bar.baz == true)"},
+		{"foo.bar == true && bar.baz == false", "((foo.bar == true) && (bar.baz == false))"},
 		{"a || b && c", "(a || (b && c))"},
 		{"a && b || c", "((a && b) || c)"},
 		{"env(env(LLAMAS)) == true", "(env(env(LLAMAS)) == true)"},
 		{"a =~ /a/ && b =~ /b/", "((a =~ /a/) && (b =~ /b/))"},
+		{"true ? false : true", "(true ? false : true)"},
+		{"a || b ? c || d : e || f ? g : h", "((a || b) ? (c || d) : ((e || f) ? g : h))"},
 	}
 
 	for _, tt := range tests {
@@ -316,6 +408,29 @@ func TestCallExpressionParameterParsing(t *testing.T) {
 	}
 }
 
+func TestDottedCallExpressionParsing(t *testing.T) {
+	l := lexer.New(`build.env("FOO") == "BAR"`)
+	p := New(l)
+	expr := p.Parse()
+	checkParserErrors(t, p)
+
+	infix, ok := expr.(*ast.InfixExpression)
+	if !ok {
+		t.Fatalf("expr is not ast.InfixExpression. got=%T", expr)
+	}
+	call, ok := infix.Left.(*ast.CallExpression)
+	if !ok {
+		t.Fatalf("left expr is not ast.CallExpression. got=%T", infix.Left)
+	}
+	if call.Function != "build.env" {
+		t.Fatalf("function = %q, want %q", call.Function, "build.env")
+	}
+	if len(call.Arguments) != 1 {
+		t.Fatalf("wrong number of arguments. want=1, got=%d", len(call.Arguments))
+	}
+	testLiteralExpression(t, call.Arguments[0], "FOO")
+}
+
 func TestParsingEmptyArrayLiterals(t *testing.T) {
 	input := "[]"
 
@@ -361,7 +476,6 @@ func TestParsingContainsOperators(t *testing.T) {
 		operator string
 	}{
 		{`build.creator.teams includes "deploy"`, "includes"},
-		{`["llamas", "alpacas"] @> "llamas"`, "@>"},
 	}
 
 	for _, tt := range tests {
@@ -378,6 +492,16 @@ func TestParsingContainsOperators(t *testing.T) {
 		if iexpr.Operator != tt.operator {
 			t.Fatalf("exp doesn't have expected contains operator. want=%s got=%s", tt.operator, iexpr.Operator)
 		}
+	}
+}
+
+func TestParserRejectsNonServerContainsOperator(t *testing.T) {
+	l := lexer.New(`["llamas", "alpacas"] @> "llamas"`)
+	p := New(l)
+	p.Parse()
+
+	if len(p.Errors()) == 0 {
+		t.Fatalf("expected parser errors")
 	}
 }
 

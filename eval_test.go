@@ -97,6 +97,24 @@ func TestConditionalEvaluationSemantics(t *testing.T) {
 			want:       false,
 		},
 		{
+			name:       "ternary evaluates alternative branch",
+			source:     upstreamEvaluatorSpec,
+			expression: `1 == 2 ? 3 == 4 : 5 == 5`,
+			want:       true,
+		},
+		{
+			name:       "ternary evaluates consequence branch",
+			source:     upstreamEvaluatorSpec,
+			expression: `1 == 1 ? 3 == 4 : 5 == 5`,
+			want:       false,
+		},
+		{
+			name:       "nested ternary is right associative",
+			source:     upstreamEvaluatorSpec,
+			expression: `false ? true : false ? true : true`,
+			want:       true,
+		},
+		{
 			name:       "missing variable fails closed",
 			source:     upstreamBuildConditionSpec,
 			expression: `missing.value == "x"`,
