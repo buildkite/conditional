@@ -31,8 +31,11 @@ func evalShellExpansion(raw string, scope Scope) object.Object {
 	return &object.String{Value: value}
 }
 
-func evalStringLiteral(value string, quote string, scope Scope) object.Object {
-	if quote != `"` || !ContainsShellTemplate(value) {
+func evalStringLiteral(value string, raw string, quote string, scope Scope) object.Object {
+	if raw == "" {
+		raw = value
+	}
+	if quote != `"` || !ContainsShellTemplate(raw) {
 		return &object.String{Value: value}
 	}
 
@@ -41,7 +44,7 @@ func evalStringLiteral(value string, quote string, scope Scope) object.Object {
 		return &object.String{Value: value}
 	}
 
-	out, err := evalShellString(value, env)
+	out, err := evalShellString(raw, env)
 	if err != nil {
 		return newError("%s", err.Error())
 	}
@@ -70,12 +73,9 @@ func ContainsShellExpansion(value string) bool {
 			}
 			i++
 		case '\\':
-			next := i
-			for next < len(value) && value[next] == '\\' {
-				next++
-			}
-			if next < len(value) && value[next] == '$' && next == i+1 {
-				i = next + 1
+			_, next, err := readShellStringEscape(value, i)
+			if err != nil {
+				i++
 				continue
 			}
 			i = next
@@ -223,6 +223,13 @@ func evalShellString(raw string, env EnvScope) (string, error) {
 	var out strings.Builder
 	for i := 0; i < len(raw); {
 		switch raw[i] {
+		case '"', '\'':
+			value, next, err := evalQuotedShellString(raw, i, env)
+			if err != nil {
+				return "", err
+			}
+			out.WriteString(value)
+			i = next
 		case '$':
 			if i+1 < len(raw) && raw[i+1] == '$' {
 				out.WriteByte('$')
@@ -244,16 +251,11 @@ func evalShellString(raw string, env EnvScope) (string, error) {
 			}
 			i = next
 		case '\\':
-			next := i
-			for next < len(raw) && raw[next] == '\\' {
-				next++
+			value, next, err := readShellStringEscape(raw, i)
+			if err != nil {
+				return "", err
 			}
-			if next < len(raw) && raw[next] == '$' && next == i+1 {
-				out.WriteByte('$')
-				i = next + 1
-				continue
-			}
-			out.WriteString(raw[i:next])
+			out.WriteString(value)
 			i = next
 		default:
 			out.WriteByte(raw[i])
@@ -261,6 +263,132 @@ func evalShellString(raw string, env EnvScope) (string, error) {
 		}
 	}
 	return out.String(), nil
+}
+
+func evalQuotedShellString(raw string, start int, env EnvScope) (string, int, error) {
+	quote := raw[start]
+	var out strings.Builder
+	for i := start + 1; i < len(raw); {
+		if raw[i] == quote {
+			return out.String(), i + 1, nil
+		}
+
+		if quote == '\'' {
+			if raw[i] == '\\' {
+				value, next, err := readSingleQuotedShellEscape(raw, i)
+				if err != nil {
+					return "", start, err
+				}
+				out.WriteString(value)
+				i = next
+				continue
+			}
+			out.WriteByte(raw[i])
+			i++
+			continue
+		}
+
+		switch raw[i] {
+		case '$':
+			if i+1 < len(raw) && raw[i+1] == '$' {
+				out.WriteByte('$')
+				i += 2
+				continue
+			}
+			expansion, next, ok := readShellExpansion(raw, i)
+			if !ok {
+				out.WriteByte('$')
+				i++
+				continue
+			}
+			value, set, err := evalShellRaw(expansion, env)
+			if err != nil {
+				return "", start, err
+			}
+			if set {
+				out.WriteString(value)
+			}
+			i = next
+		case '\\':
+			value, next, err := readShellStringEscape(raw, i)
+			if err != nil {
+				return "", start, err
+			}
+			out.WriteString(value)
+			i = next
+		default:
+			out.WriteByte(raw[i])
+			i++
+		}
+	}
+	return "", start, fmt.Errorf("unterminated shell string")
+}
+
+func readSingleQuotedShellEscape(raw string, start int) (string, int, error) {
+	if start+1 >= len(raw) {
+		return "", start, fmt.Errorf("unterminated shell string escape")
+	}
+	switch raw[start+1] {
+	case '\\', '\'':
+		return string(raw[start+1]), start + 2, nil
+	default:
+		return raw[start : start+2], start + 2, nil
+	}
+}
+
+func readShellStringEscape(raw string, start int) (string, int, error) {
+	if start+1 >= len(raw) {
+		return "", start, fmt.Errorf("unterminated shell string escape")
+	}
+
+	next := raw[start+1]
+	switch next {
+	case 'n':
+		return "\n", start + 2, nil
+	case 's':
+		return " ", start + 2, nil
+	case 'r':
+		return "\r", start + 2, nil
+	case 't':
+		return "\t", start + 2, nil
+	case 'v':
+		return "\v", start + 2, nil
+	case 'f':
+		return "\f", start + 2, nil
+	case 'b':
+		return "\b", start + 2, nil
+	case 'a':
+		return "\a", start + 2, nil
+	case 'e':
+		return "\x1b", start + 2, nil
+	case '\\', '"':
+		return string(next), start + 2, nil
+	case 'x':
+		if start+3 < len(raw) && isHexDigit(raw[start+2]) && isHexDigit(raw[start+3]) {
+			value, err := strconv.ParseInt(raw[start+2:start+4], 16, 32)
+			if err != nil {
+				return "", start, err
+			}
+			return string([]byte{byte(value)}), start + 4, nil
+		}
+		return "x", start + 2, nil
+	default:
+		if isOctalDigit(next) {
+			end := start + 2
+			for end < len(raw) && end < start+4 && isOctalDigit(raw[end]) {
+				end++
+			}
+			value, err := strconv.ParseInt(raw[start+1:end], 8, 32)
+			if err != nil {
+				return "", start, err
+			}
+			if value > 0xff {
+				return "", start, fmt.Errorf("octal escape out of range: \\%s", raw[start+1:end])
+			}
+			return string([]byte{byte(value)}), end, nil
+		}
+		return string(next), start + 2, nil
+	}
 }
 
 func splitShellName(inner string) (name string, rest string, ok bool) {
@@ -288,6 +416,18 @@ func splitTopLevel(raw string, separator byte) []string {
 	start := 0
 	depth := 0
 	for i := 0; i < len(raw); i++ {
+		if raw[i] == '\\' {
+			i++
+			continue
+		}
+		if raw[i] == '"' || raw[i] == '\'' {
+			next, ok := skipShellQuoted(raw, i)
+			if !ok {
+				continue
+			}
+			i = next - 1
+			continue
+		}
 		if raw[i] == '$' && i+1 < len(raw) && raw[i+1] == '{' {
 			depth++
 			i++
@@ -326,6 +466,18 @@ func readShellExpansion(raw string, start int) (string, int, bool) {
 
 	depth := 1
 	for i := start + 2; i < len(raw); i++ {
+		if raw[i] == '\\' {
+			i++
+			continue
+		}
+		if raw[i] == '"' || raw[i] == '\'' {
+			next, ok := skipShellQuoted(raw, i)
+			if !ok {
+				return "", start, false
+			}
+			i = next - 1
+			continue
+		}
 		if raw[i] == '$' && i+1 < len(raw) && raw[i+1] == '{' {
 			depth++
 			i++
@@ -341,10 +493,33 @@ func readShellExpansion(raw string, start int) (string, int, bool) {
 	return "", start, false
 }
 
+func skipShellQuoted(raw string, start int) (int, bool) {
+	quote := raw[start]
+	escaped := false
+	for i := start + 1; i < len(raw); i++ {
+		if raw[i] == quote && !escaped {
+			return i + 1, true
+		}
+		escaped = raw[i] == '\\' && !escaped
+		if raw[i] != '\\' {
+			escaped = false
+		}
+	}
+	return start, false
+}
+
 func isShellIdentStart(ch byte) bool {
 	return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_'
 }
 
 func isShellIdentPart(ch byte) bool {
 	return isShellIdentStart(ch) || (ch >= '0' && ch <= '9')
+}
+
+func isOctalDigit(ch byte) bool {
+	return ch >= '0' && ch <= '7'
+}
+
+func isHexDigit(ch byte) bool {
+	return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F')
 }

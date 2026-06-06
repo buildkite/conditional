@@ -29,7 +29,7 @@ func Eval(node ast.Node, scope Scope) object.Object {
 		return &object.Integer{Value: node.Value}
 
 	case *ast.StringLiteral:
-		return evalStringLiteral(node.Value, node.Token.Flags, scope)
+		return evalStringLiteral(node.Value, node.Token.Raw, node.Token.Flags, scope)
 
 	case *ast.Regexp:
 		return &object.Regexp{Regexp: node.Regexp, Flags: node.Flags}

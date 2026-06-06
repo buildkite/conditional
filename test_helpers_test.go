@@ -7,6 +7,7 @@ const (
 
 	upstreamParserSpec              = "buildkite/buildkite:spec/models/conditional/parser_spec.rb"
 	upstreamEvaluatorSpec           = "buildkite/buildkite:spec/models/conditional/evaluator_spec.rb"
+	upstreamConditionalGrammar      = "buildkite/buildkite:app/models/conditional/grammar.kpeg"
 	upstreamConditionalVariableSpec = "buildkite/buildkite:spec/models/conditional/variable_spec.rb"
 	upstreamBuildConditionSpec      = "buildkite/buildkite:spec/models/build/condition_spec.rb"
 	upstreamBuildValidatorSpec      = "buildkite/buildkite:spec/validators/build_condition_validator_spec.rb"

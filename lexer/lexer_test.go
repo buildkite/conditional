@@ -35,6 +35,33 @@ func TestLexingUnterminatedStrings(t *testing.T) {
 	})
 }
 
+func TestLexingStringEscapes(t *testing.T) {
+	expectTokens(t, `"line\nfeed"`, []tokenExpectation{
+		{token.STRING, "line\nfeed"},
+	})
+	expectTokens(t, `"space\sescape"`, []tokenExpectation{
+		{token.STRING, "space escape"},
+	})
+	expectTokens(t, `"hex\x41 octal\141"`, []tokenExpectation{
+		{token.STRING, "hexA octala"},
+	})
+	expectTokens(t, `"byte\xff octal\377"`, []tokenExpectation{
+		{token.STRING, "byte" + string([]byte{0xff}) + " octal" + string([]byte{0xff})},
+	})
+	expectTokens(t, `"unknown\qescape"`, []tokenExpectation{
+		{token.STRING, "unknownqescape"},
+	})
+	expectTokens(t, `'listening to \'music\''`, []tokenExpectation{
+		{token.STRING, "listening to 'music'"},
+	})
+	expectTokens(t, `'\n stays literal'`, []tokenExpectation{
+		{token.STRING, `\n stays literal`},
+	})
+	expectTokens(t, `'\\ becomes slash'`, []tokenExpectation{
+		{token.STRING, `\ becomes slash`},
+	})
+}
+
 func TestLexingValueComparisons(t *testing.T) {
 	expectTokens(t, `build.branch == "master"`, []tokenExpectation{
 		{token.IDENT, "build.branch"},

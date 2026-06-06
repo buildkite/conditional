@@ -263,6 +263,99 @@ func TestDoubleQuotedShellExpansionWithoutEnvironmentScopeRemainsLiteral(t *test
 	testBooleanObject(t, evaluated, true)
 }
 
+func TestContainsShellExpansionConsumesStringEscapes(t *testing.T) {
+	tests := []struct {
+		name     string
+		raw      string
+		expected bool
+	}{
+		{
+			name:     "unescaped variable expands",
+			raw:      `${branch}`,
+			expected: true,
+		},
+		{
+			name:     "escaped dollar stays literal",
+			raw:      `\$branch`,
+			expected: false,
+		},
+		{
+			name:     "dollar after escaped slash expands",
+			raw:      `\\$branch`,
+			expected: true,
+		},
+		{
+			name:     "escaped dollar after escaped slash stays literal",
+			raw:      `\\\$branch`,
+			expected: false,
+		},
+		{
+			name:     "hex escaped dollar stays literal",
+			raw:      `\x24branch`,
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		if got := ContainsShellExpansion(tt.raw); got != tt.expected {
+			t.Errorf("%s: ContainsShellExpansion(%q) = %t, want %t", tt.name, tt.raw, got, tt.expected)
+		}
+	}
+}
+
+func TestShellFallbackStringGrammar(t *testing.T) {
+	scope := shellTestScope{
+		Struct: object.Struct{},
+		env: map[string]string{
+			"branch": "main",
+		},
+	}
+
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{`${missing-\x41\svalue} == "A value"`, true},
+		{`${missing-"$branch"} == "main"`, true},
+		{`${missing-"}"} == "}"`, true},
+		{`${missing-'quoted fallback'} == "quoted fallback"`, true},
+		{`${missing-\q} == "q"`, true},
+	}
+
+	for _, tt := range tests {
+		evaluated := testEvalWithScope(tt.input, scope)
+		testBooleanObject(t, evaluated, tt.expected)
+	}
+}
+
+func TestShellStringEscapesUseBytes(t *testing.T) {
+	got, err := evalShellString(`\xff\377`, shellTestScope{})
+	if err != nil {
+		t.Fatalf("evalShellString returned error: %v", err)
+	}
+
+	want := string([]byte{0xff, 0xff})
+	if got != want {
+		t.Fatalf("evalShellString bytes = %v, want %v", []byte(got), []byte(want))
+	}
+}
+
+func TestShellStringEscapesRejectOutOfRangeOctal(t *testing.T) {
+	if _, err := evalShellString(`\400`, shellTestScope{}); err == nil {
+		t.Fatal("evalShellString did not reject out-of-range octal escape")
+	}
+}
+
+type shellTestScope struct {
+	object.Struct
+	env map[string]string
+}
+
+func (s shellTestScope) LookupEnv(key string) (string, bool) {
+	value, ok := s.env[key]
+	return value, ok
+}
+
 func testEval(input string) object.Object {
 	return testEvalWithScope(input, object.Struct{})
 }
