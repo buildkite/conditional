@@ -797,7 +797,7 @@ Current Slice 4 progress:
 - Runtime environment function arguments now mirror the server after string
   interpolation: blank names and unsupported `BUILDKITE_*` names produce
   evaluation errors for build conditions and `false` for notification
-  deliverability checks.
+  deliverability checks, while dynamic custom names remain runtime lookups.
 - Remaining Slice 4 work before marking the slice landed: broader upstream
   type-checker cases for custom functions and lazy variables, plus a final pass
   over the upstream evaluator/parser groups to ensure no substitution grammar

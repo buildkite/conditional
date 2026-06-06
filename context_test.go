@@ -394,6 +394,19 @@ func TestBuildkiteEnvironmentFunctions(t *testing.T) {
 			wantError: ErrorKindEvaluation,
 		},
 		{
+			name:       "indirect custom env name uses runtime lookup",
+			source:     upstreamBuildPipelineEnvModel,
+			expression: `env(env("SECRET_NAME")) == "value" && build.env(env("SECRET_NAME")) == "value"`,
+			ctx: Context{
+				EntryPoint: EntryPointBuildCondition,
+				BuildEnv: map[string]string{
+					"SECRET_NAME": "FOO-BAR",
+					"FOO-BAR":     "value",
+				},
+			},
+			want: true,
+		},
+		{
 			name:       "missing indirect env name fails closed",
 			source:     upstreamBuildConditionSpec,
 			expression: `build.env(env("MISSING_SECRET_NAME")) == null`,
