@@ -298,6 +298,12 @@ func envNameArg(args []object.Object) (string, *object.Error) {
 	if !ok {
 		return "", &object.Error{Message: "env argument must be a string"}
 	}
+	if name.Value == "" {
+		return "", &object.Error{Message: "env argument should be an environment variable name"}
+	}
+	if unsupportedBuildkiteEnv(name.Value) {
+		return "", &object.Error{Message: fmt.Sprintf("interpolation of %q is not supported", name.Value)}
+	}
 	return name.Value, nil
 }
 

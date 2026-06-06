@@ -371,9 +371,9 @@ func TestBuildkiteEnvironmentFunctions(t *testing.T) {
 			want: true,
 		},
 		{
-			name:       "unsupported Buildkite env is filtered when indirect",
+			name:       "indirect unsupported Buildkite env fails closed",
 			source:     upstreamBuildConditionSpec,
-			expression: `build.env(env("SECRET_NAME")) == null && env(env("SECRET_NAME")) == ""`,
+			expression: `build.env(env("SECRET_NAME")) == null`,
 			ctx: Context{
 				EntryPoint: EntryPointBuildCondition,
 				BuildEnv: map[string]string{
@@ -381,7 +381,37 @@ func TestBuildkiteEnvironmentFunctions(t *testing.T) {
 					"BUILDKITE_AGENT_ACCESS_TOKEN": "secret",
 				},
 			},
-			want: true,
+			wantError: ErrorKindEvaluation,
+		},
+		{
+			name:       "indirect blank env name fails closed",
+			source:     upstreamBuildConditionSpec,
+			expression: `env(env("SECRET_NAME")) == ""`,
+			ctx: Context{
+				EntryPoint: EntryPointBuildCondition,
+				BuildEnv:   map[string]string{"SECRET_NAME": ""},
+			},
+			wantError: ErrorKindEvaluation,
+		},
+		{
+			name:       "missing indirect env name fails closed",
+			source:     upstreamBuildConditionSpec,
+			expression: `build.env(env("MISSING_SECRET_NAME")) == null`,
+			ctx:        Context{EntryPoint: EntryPointBuildCondition},
+			wantError:  ErrorKindEvaluation,
+		},
+		{
+			name:       "build notification false for indirect unsupported env",
+			source:     upstreamBuildNotificationSpec,
+			expression: `env(env("SECRET_NAME")) == "secret"`,
+			ctx: Context{
+				EntryPoint: EntryPointBuildNotification,
+				BuildEnv: map[string]string{
+					"SECRET_NAME":                  "BUILDKITE_AGENT_ACCESS_TOKEN",
+					"BUILDKITE_AGENT_ACCESS_TOKEN": "secret",
+				},
+			},
+			want: false,
 		},
 	}
 
