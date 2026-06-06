@@ -51,12 +51,18 @@ func evalStringLiteral(value string, quote string, scope Scope) object.Object {
 // ContainsShellTemplate reports whether a double-quoted string can produce a
 // different runtime value after shell-style expansion.
 func ContainsShellTemplate(value string) bool {
-	return strings.Contains(value, "$$") || containsShellExpansion(value)
+	return strings.Contains(value, "$$") || ContainsShellExpansion(value)
 }
 
-func containsShellExpansion(value string) bool {
+// ContainsShellExpansion reports whether a string contains a shell expression
+// whose value depends on runtime environment.
+func ContainsShellExpansion(value string) bool {
 	for i := 0; i < len(value); i++ {
 		if value[i] != '$' {
+			continue
+		}
+		if i+1 < len(value) && value[i+1] == '$' {
+			i++
 			continue
 		}
 		_, _, ok := readShellExpansion(value, i)
@@ -142,15 +148,11 @@ func evalBracedShell(inner string, env EnvScope) (string, bool, error) {
 
 func evalShellSubstring(name string, raw string, env EnvScope) (string, bool, error) {
 	parts := splitTopLevel(raw, ':')
-	if len(parts) != 2 {
+	if len(parts) < 1 || len(parts) > 2 {
 		return "", false, fmt.Errorf("invalid shell substring: %s", raw)
 	}
 
 	x, err := evalShellInteger(parts[0], env)
-	if err != nil {
-		return "", false, err
-	}
-	y, err := evalShellInteger(parts[1], env)
 	if err != nil {
 		return "", false, err
 	}
@@ -164,7 +166,14 @@ func evalShellSubstring(name string, raw string, env EnvScope) (string, bool, er
 	if x >= len(runes) {
 		return "", true, nil
 	}
-	end := x + y
+	end := len(runes)
+	if len(parts) == 2 {
+		y, err := evalShellInteger(parts[1], env)
+		if err != nil {
+			return "", false, err
+		}
+		end = x + y
+	}
 	if end > len(runes) {
 		end = len(runes)
 	}

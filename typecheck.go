@@ -209,6 +209,12 @@ func (c typeChecker) checkCompatibleTypes(left, right ast.Expression, allowArray
 		return leftType.withNullabilityFrom(rightType), nil
 	}
 	if leftType.enum != nil {
+		if rightType.enum != nil {
+			if !leftType.enum.compatible(rightType.enum) {
+				return valueType{kind: kindUnknown}, validationError("unexpected type: expected %s but found %s", leftType.describe(), rightType.describe())
+			}
+			return leftType.withNullabilityFrom(rightType), nil
+		}
 		if err := c.expectAny(right, kindString, kindNull); err != nil {
 			return valueType{kind: kindUnknown}, err
 		}
@@ -291,7 +297,7 @@ func variableTypes(ctx Context) map[string]valueType {
 	variables := map[string]valueType{
 		"build.id":                            stringType(),
 		"build.state":                         enumValueType("build state", "creating", "started", "running", "scheduled", "blocked", "passed", "failing", "failed", "started_failing", "canceling", "canceled", "skipped", "not_run"),
-		"build.fixed":                         boolType(),
+		"build.fixed":                         boolTypeFor(ctx.Build.Fixed),
 		"build.blocked_state":                 enumValueType("build blocked state", "failed", "passed", "running"),
 		"build.source":                        enumValueType("build source", "api", "ui", "webhook", "trigger_job", "schedule", "pipeline_trigger"),
 		"build.source_event":                  stringType(),
@@ -305,7 +311,7 @@ func variableTypes(ctx Context) map[string]valueType {
 		"build.creator.name":                  stringType(),
 		"build.creator.email":                 stringType(),
 		"build.creator.teams":                 stringArrayType(),
-		"build.creator.verified":              boolType(),
+		"build.creator.verified":              boolTypeFor(ctx.Build.Creator.Verified),
 		"build.author.id":                     stringType(),
 		"build.author.name":                   stringType(),
 		"build.author.email":                  stringType(),
@@ -328,9 +334,9 @@ func variableTypes(ctx Context) map[string]valueType {
 		"pipeline.slug":                       stringType(),
 		"pipeline.default_branch":             stringType(),
 		"pipeline.repository":                 stringType(),
-		"pipeline.started_passing":            boolType(),
-		"pipeline.started_failing":            boolType(),
-		"pipeline.next_finished_build_exists": boolType(),
+		"pipeline.started_passing":            boolTypeFor(ctx.Pipeline.StartedPassing),
+		"pipeline.started_failing":            boolTypeFor(ctx.Pipeline.StartedFailing),
+		"pipeline.next_finished_build_exists": boolTypeFor(ctx.Pipeline.NextFinishedBuildExists),
 		"organization.id":                     stringType(),
 		"organization.slug":                   stringType(),
 	}
@@ -431,6 +437,10 @@ func (e enumType) includes(value string) bool {
 	return ok
 }
 
+func (e enumType) compatible(other *enumType) bool {
+	return other != nil && e.name == other.name
+}
+
 func validationError(format string, args ...any) *Error {
 	return &Error{Kind: ErrorKindValidation, Message: fmt.Sprintf(format, args...)}
 }
@@ -464,7 +474,7 @@ func containsKind(kinds []valueKind, target valueKind) bool {
 }
 
 func runtimeStringLiteral(literal *ast.StringLiteral) bool {
-	return literal.Token.Flags == `"` && evaluator.ContainsShellTemplate(literal.Value)
+	return literal.Token.Flags == `"` && evaluator.ContainsShellExpansion(literal.Value)
 }
 
 func staticStringLiteral(expr ast.Expression) (*ast.StringLiteral, bool) {

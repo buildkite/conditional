@@ -112,6 +112,15 @@ func TestConditionalEvaluationSemantics(t *testing.T) {
 			want: true,
 		},
 		{
+			name:       "enum comparison allows same enum variables",
+			source:     upstreamParserSpec,
+			expression: `build.state == build.state`,
+			ctx: Context{
+				Build: Build{State: str("passed")},
+			},
+			want: true,
+		},
+		{
 			name:       "valid enum comparison can put literal first",
 			source:     upstreamParserSpec,
 			expression: `"passed" == build.state`,
@@ -209,6 +218,12 @@ func TestConditionalEvaluationSemantics(t *testing.T) {
 			name:       "non boolean result fails closed",
 			source:     upstreamBuildValidatorSpec,
 			expression: `"not boolean"`,
+			wantError:  ErrorKindResult,
+		},
+		{
+			name:       "nullable pointer backed boolean result fails closed",
+			source:     upstreamBuildValidatorSpec,
+			expression: `build.fixed`,
 			wantError:  ErrorKindResult,
 		},
 		{
@@ -338,6 +353,13 @@ func TestConditionalShellSubstitutionEvaluation(t *testing.T) {
 			name:       "substring literal offsets",
 			source:     upstreamEvaluatorSpec,
 			expression: `${branch:1:2} == "ai"`,
+			ctx:        ctx,
+			want:       true,
+		},
+		{
+			name:       "substring offset only",
+			source:     upstreamEvaluatorSpec,
+			expression: `${branch:2} == "in"`,
 			ctx:        ctx,
 			want:       true,
 		},
