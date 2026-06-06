@@ -45,11 +45,13 @@ type Build struct {
 	Commit       *string
 	Number       *int
 
-	Creator     Actor
-	Author      Actor
-	SCM         SCM
-	PullRequest PullRequest
-	MergeQueue  MergeQueue
+	Creator       Actor
+	Author        Actor
+	SCM           SCM
+	PullRequest   PullRequest
+	MergeQueue    MergeQueue
+	TriggeredFrom TriggeredFrom
+	RebuiltFrom   RebuiltFrom
 }
 
 // Actor contains server-resolved author or creator values. Email should contain
@@ -65,14 +67,15 @@ type Actor struct {
 
 // Pipeline contains pipeline values exposed to conditionals.
 type Pipeline struct {
-	ID                      *string
-	Name                    *string
-	Slug                    *string
-	DefaultBranch           *string
-	Repository              *string
-	StartedPassing          *bool
-	StartedFailing          *bool
-	NextFinishedBuildExists *bool
+	ID                                    *string
+	Name                                  *string
+	Slug                                  *string
+	DefaultBranch                         *string
+	Repository                            *string
+	StartedPassing                        *bool
+	StartedFailing                        *bool
+	NextFinishedBuildExists               *bool
+	UseMergeQueueBaseCommitForGitDiffBase *bool
 }
 
 // SCM contains source control author and committer values.
@@ -85,19 +88,37 @@ type SCM struct {
 
 // PullRequest contains pull request values exposed to conditionals.
 type PullRequest struct {
-	ID             *string
-	BaseBranch     *string
-	Draft          *bool
-	Label          *string
-	Labels         []string
-	Repository     *string
-	RepositoryFork *bool
+	ID                *string
+	BaseBranch        *string
+	Draft             *bool
+	Label             *string
+	Labels            []string
+	Repository        *string
+	RepositoryFork    *bool
+	UsingMergeRefspec *bool
 }
 
 // MergeQueue contains merge queue values exposed to conditionals.
 type MergeQueue struct {
+	// Active reports whether this build is a merge queue build. The server uses
+	// this state to gate BUILDKITE_GIT_DIFF_BASE independently of the base values.
+	Active     bool
 	BaseBranch *string
 	BaseCommit *string
+}
+
+// TriggeredFrom contains values for the build/job that triggered this build.
+type TriggeredFrom struct {
+	BuildID      *string
+	BuildNumber  *int
+	PipelineSlug *string
+	JobID        *string
+}
+
+// RebuiltFrom contains values for the build this build was rebuilt from.
+type RebuiltFrom struct {
+	BuildID     *string
+	BuildNumber *int
 }
 
 // Organization contains organization values exposed to conditionals.

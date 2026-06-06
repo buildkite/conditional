@@ -371,6 +371,101 @@ func TestBuildkiteEnvironmentFunctions(t *testing.T) {
 			want: true,
 		},
 		{
+			name:   "supported built in Buildkite env values default blank",
+			source: upstreamBuildPipelineEnvModel,
+			expression: `build.env("BUILDKITE_TRIGGERED_FROM_BUILD_ID") == "" &&
+				build.env("BUILDKITE_TRIGGERED_FROM_BUILD_NUMBER") == "" &&
+				build.env("BUILDKITE_TRIGGERED_FROM_BUILD_PIPELINE_SLUG") == "" &&
+				build.env("BUILDKITE_TRIGGERED_FROM_BUILD_JOB_ID") == "" &&
+				build.env("BUILDKITE_REBUILT_FROM_BUILD_ID") == "" &&
+				build.env("BUILDKITE_REBUILT_FROM_BUILD_NUMBER") == "" &&
+				build.env("BUILDKITE_PULL_REQUEST_LABELS") == "" &&
+				build.env("BUILDKITE_PULL_REQUEST_USING_MERGE_REFSPEC") == "" &&
+				build.env("BUILDKITE_GIT_DIFF_BASE") == ""`,
+			ctx:  Context{EntryPoint: EntryPointBuildCondition},
+			want: true,
+		},
+		{
+			name:   "triggered and rebuilt built in Buildkite env values are derived",
+			source: upstreamBuildPipelineEnvModel,
+			expression: `build.env("BUILDKITE_TRIGGERED_FROM_BUILD_ID") == "triggered-build" &&
+				build.env("BUILDKITE_TRIGGERED_FROM_BUILD_NUMBER") == "42" &&
+				build.env("BUILDKITE_TRIGGERED_FROM_BUILD_PIPELINE_SLUG") == "deploy" &&
+				build.env("BUILDKITE_TRIGGERED_FROM_BUILD_JOB_ID") == "trigger-job" &&
+				build.env("BUILDKITE_REBUILT_FROM_BUILD_ID") == "rebuilt-build" &&
+				build.env("BUILDKITE_REBUILT_FROM_BUILD_NUMBER") == "41"`,
+			ctx: Context{
+				EntryPoint: EntryPointBuildCondition,
+				Build: Build{
+					TriggeredFrom: TriggeredFrom{
+						BuildID:      str("triggered-build"),
+						BuildNumber:  intptr(42),
+						PipelineSlug: str("deploy"),
+						JobID:        str("trigger-job"),
+					},
+					RebuiltFrom: RebuiltFrom{
+						BuildID:     str("rebuilt-build"),
+						BuildNumber: intptr(41),
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name:   "pull request merge refspec and git diff base values are derived",
+			source: upstreamBuildPipelineEnvModel,
+			expression: `build.env("BUILDKITE_PULL_REQUEST_USING_MERGE_REFSPEC") == "true" &&
+				build.env("BUILDKITE_GIT_DIFF_BASE") == "def456"`,
+			ctx: Context{
+				EntryPoint: EntryPointBuildCondition,
+				Build: Build{
+					PullRequest: PullRequest{UsingMergeRefspec: boolptr(true)},
+					MergeQueue: MergeQueue{
+						Active:     true,
+						BaseBranch: str("main"),
+						BaseCommit: str("def456"),
+					},
+				},
+				Pipeline: Pipeline{UseMergeQueueBaseCommitForGitDiffBase: boolptr(true)},
+			},
+			want: true,
+		},
+		{
+			name:   "git diff base uses merge queue base branch by default",
+			source: upstreamBuildPipelineEnvModel,
+			expression: `build.env("BUILDKITE_PULL_REQUEST_USING_MERGE_REFSPEC") == "" &&
+				build.env("BUILDKITE_GIT_DIFF_BASE") == "main"`,
+			ctx: Context{
+				EntryPoint: EntryPointBuildCondition,
+				Build: Build{
+					PullRequest: PullRequest{UsingMergeRefspec: boolptr(false)},
+					MergeQueue: MergeQueue{
+						Active:     true,
+						BaseBranch: str("main"),
+						BaseCommit: str("def456"),
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name:   "git diff base is blank outside merge queue builds",
+			source: upstreamBuildPipelineEnvModel,
+			expression: `build.env("BUILDKITE_MERGE_QUEUE_BASE_BRANCH") == "main" &&
+				build.env("BUILDKITE_MERGE_QUEUE_BASE_COMMIT") == "def456" &&
+				build.env("BUILDKITE_GIT_DIFF_BASE") == ""`,
+			ctx: Context{
+				EntryPoint: EntryPointBuildCondition,
+				Build: Build{
+					MergeQueue: MergeQueue{
+						BaseBranch: str("main"),
+						BaseCommit: str("def456"),
+					},
+				},
+			},
+			want: true,
+		},
+		{
 			name:       "indirect unsupported Buildkite env fails closed",
 			source:     upstreamBuildConditionSpec,
 			expression: `build.env(env("SECRET_NAME")) == null`,

@@ -94,3 +94,7 @@ func str(value string) *string {
 func boolptr(value bool) *bool {
 	return &value
 }
+
+func intptr(value int) *int {
+	return &value
+}

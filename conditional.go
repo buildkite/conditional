@@ -2,6 +2,7 @@ package conditional
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/buildkite/conditional/ast"
@@ -615,11 +616,21 @@ func builtinEnv(ctx Context) map[string]string {
 	}
 	setStringOrBlank(env, "BUILDKITE_PULL_REQUEST_BASE_BRANCH", ctx.Build.PullRequest.BaseBranch)
 	setStringOrBlank(env, "BUILDKITE_PULL_REQUEST_REPO", ctx.Build.PullRequest.Repository)
-	if ctx.Build.PullRequest.Labels != nil {
-		env["BUILDKITE_PULL_REQUEST_LABELS"] = strings.Join(ctx.Build.PullRequest.Labels, ",")
+	env["BUILDKITE_PULL_REQUEST_LABELS"] = strings.Join(ctx.Build.PullRequest.Labels, ",")
+	if boolPtrValue(ctx.Build.PullRequest.UsingMergeRefspec) {
+		env["BUILDKITE_PULL_REQUEST_USING_MERGE_REFSPEC"] = "true"
+	} else {
+		env["BUILDKITE_PULL_REQUEST_USING_MERGE_REFSPEC"] = ""
 	}
 	setStringOrBlank(env, "BUILDKITE_MERGE_QUEUE_BASE_BRANCH", ctx.Build.MergeQueue.BaseBranch)
 	setStringOrBlank(env, "BUILDKITE_MERGE_QUEUE_BASE_COMMIT", ctx.Build.MergeQueue.BaseCommit)
+	setStringOrBlank(env, "BUILDKITE_TRIGGERED_FROM_BUILD_ID", ctx.Build.TriggeredFrom.BuildID)
+	setIntOrBlank(env, "BUILDKITE_TRIGGERED_FROM_BUILD_NUMBER", ctx.Build.TriggeredFrom.BuildNumber)
+	setStringOrBlank(env, "BUILDKITE_TRIGGERED_FROM_BUILD_PIPELINE_SLUG", ctx.Build.TriggeredFrom.PipelineSlug)
+	setStringOrBlank(env, "BUILDKITE_TRIGGERED_FROM_BUILD_JOB_ID", ctx.Build.TriggeredFrom.JobID)
+	setStringOrBlank(env, "BUILDKITE_REBUILT_FROM_BUILD_ID", ctx.Build.RebuiltFrom.BuildID)
+	setIntOrBlank(env, "BUILDKITE_REBUILT_FROM_BUILD_NUMBER", ctx.Build.RebuiltFrom.BuildNumber)
+	env["BUILDKITE_GIT_DIFF_BASE"] = gitDiffBase(ctx)
 
 	return env
 }
@@ -636,6 +647,28 @@ func setStringOrBlank(env map[string]string, key string, value *string) {
 		return
 	}
 	env[key] = *value
+}
+
+func setIntOrBlank(env map[string]string, key string, value *int) {
+	if value == nil {
+		env[key] = ""
+		return
+	}
+	env[key] = strconv.Itoa(*value)
+}
+
+func boolPtrValue(value *bool) bool {
+	return value != nil && *value
+}
+
+func gitDiffBase(ctx Context) string {
+	if !ctx.Build.MergeQueue.Active {
+		return ""
+	}
+	if boolPtrValue(ctx.Pipeline.UseMergeQueueBaseCommitForGitDiffBase) {
+		return stringPtrValue(ctx.Build.MergeQueue.BaseCommit)
+	}
+	return stringPtrValue(ctx.Build.MergeQueue.BaseBranch)
 }
 
 func normalizeEntryPoint(entryPoint EntryPoint) (EntryPoint, error) {
