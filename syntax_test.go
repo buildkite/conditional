@@ -108,7 +108,7 @@ func TestConditionalSyntaxErrors(t *testing.T) {
 			wantError:  ErrorKindParse,
 		},
 		{
-			name:       "parser rejects local-only contains operator",
+			name:       "parser rejects local-only at greater operator",
 			source:     upstreamParserSpec,
 			expression: `["main"] @> build.branch`,
 			ctx: Context{
@@ -227,7 +227,7 @@ func TestConditionalSyntaxErrors(t *testing.T) {
 func TestConditionalSyntaxEvaluationErrors(t *testing.T) {
 	tests := []evaluateCase{
 		{
-			name:       "evaluation rejects local-only contains operator at parse time",
+			name:       "evaluation rejects local-only at greater operator at parse time",
 			source:     upstreamParserSpec,
 			expression: `["main"] @> build.branch`,
 			ctx: Context{

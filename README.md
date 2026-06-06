@@ -1,6 +1,7 @@
 # Buildkite Conditional Evaluator
 
-A small c-like language for evaluating boolean conditions, used in Buildkite's pipeline.yml format and for filtering whether webhooks are accepted.
+A small Go library for validating and evaluating Buildkite conditional
+expressions.
 
 ## What's supported?
 
@@ -10,11 +11,11 @@ A small c-like language for evaluating boolean conditions, used in Buildkite's p
 * Strings `'foobar' or "foobar"`
 * Booleans and nulls `true false null`
 * Parenthesis to control order of evaluation `( )`
-* Object dereferencing `foo.bar`
+* Buildkite identifiers such as `build.branch`
 * Regular expressions `/^v1\.0/`
-* Function calls `foo("bar")`
+* Function calls such as `env("FOO")` and `build.env("FOO")`
 * Prefixes: `!`
-* Arrays: `["foo","bar"] includes "foo"` (`@>` is also supported for compatibility)
+* Arrays: `["foo","bar"] includes "foo"`
 
 ### Syntax Examples
 
@@ -30,16 +31,15 @@ build.tag != "v1.0.0"
 "blah" == 'blah'
 
 // function calls
-env('FOO') == "BAR"
-env('FOO') == obj.bar
-env(env('BAR')) == "FOO"
+env("FOO") == "BAR"
+build.env("BUILDKITE_BRANCH") == build.branch
 
 // regular expression matches
 build.tag =~ /^v/
 build.message !~ /\[skip tests\]/i
 
 // complex expressions
-((build.tag =~ ^v) || (meta-data("foo") == "bar"))
+((build.tag =~ /^v/) || (build.branch == "main"))
 
 // array operations
 ["master","staging"] includes build.branch
@@ -58,35 +58,33 @@ package main
 import (
 	"log"
 
-	"github.com/buildkite/conditional/evaluator"
-	"github.com/buildkite/conditional/lexer"
-	"github.com/buildkite/conditional/object"
-	"github.com/buildkite/conditional/parser"
+	"github.com/buildkite/conditional"
 )
 
 func main() {
-	l := lexer.New(`build.message =~ /^llamas rock/`)
-	p := parser.New(l)
-	expr := p.Parse()
+	message := "llamas rock, and so do alpacas"
 
-	if errs := p.Errors(); len(errs) > 0 {
-		log.Fatal(errs)
-	}
-
-	obj := evaluator.Eval(expr, object.Struct{
-		"build": object.Struct{
-			"message": &object.String{"llamas rock, and so do alpacas"},
+	ok, err := conditional.Evaluate(`build.message =~ /^llamas rock/`, conditional.Context{
+		EntryPoint: conditional.EntryPointBuildCondition,
+		Build: conditional.Build{
+			Message: &message,
 		},
 	})
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	log.Printf("Result: %#v", obj)
+	log.Printf("Result: %#v", ok)
 }
 ```
 
 ## Design
 
-Largely derived from [Writing an Interpreter in Go](https://interpreterbook.com):
+The root package is the public Buildkite API:
 
-* `lexer.Lexer` takes a string of input and turns it into a stream of `token.Token`
-* `parser.Parser` takes a Lexer and parses tokens into an `ast.Expression`
-* `evaluator.Evaluator` which takes a `ast.Expression` and evaluates it, with a `object.Map` for variables in scope. An `*object.Object` is returned.
+* `conditional.Validate` checks an expression for a Buildkite context.
+* `conditional.Evaluate` evaluates an expression and returns a boolean result.
+* `conditional.Context` defines the Buildkite entry point and available values.
+
+The lexer, parser, and evaluator packages are implementation details derived
+from [Writing an Interpreter in Go](https://interpreterbook.com).

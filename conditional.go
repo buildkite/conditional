@@ -100,9 +100,6 @@ func validateExpression(expr ast.Expression, ctx Context) error {
 	if err := validateEnvCalls(expr); err != nil {
 		return err
 	}
-	if err := validateOperators(expr); err != nil {
-		return err
-	}
 	return typeCheckExpression(expr, ctx)
 }
 
@@ -169,43 +166,6 @@ func validateEnvCalls(expr ast.Expression) error {
 	case *ast.ArrayLiteral:
 		for _, element := range expr.Elements {
 			if err := validateEnvCalls(element); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
-}
-
-func validateOperators(expr ast.Expression) error {
-	switch expr := expr.(type) {
-	case *ast.PrefixExpression:
-		return validateOperators(expr.Right)
-	case *ast.ConditionalExpression:
-		if err := validateOperators(expr.Condition); err != nil {
-			return err
-		}
-		if err := validateOperators(expr.Consequence); err != nil {
-			return err
-		}
-		return validateOperators(expr.Alternative)
-	case *ast.InfixExpression:
-		if expr.Operator == "@>" {
-			return &Error{Kind: ErrorKindValidation, Message: "@> is not Buildkite conditional syntax"}
-		}
-		if err := validateOperators(expr.Left); err != nil {
-			return err
-		}
-		return validateOperators(expr.Right)
-	case *ast.CallExpression:
-		for _, arg := range expr.Arguments {
-			if err := validateOperators(arg); err != nil {
-				return err
-			}
-		}
-	case *ast.ArrayLiteral:
-		for _, element := range expr.Elements {
-			if err := validateOperators(element); err != nil {
 				return err
 			}
 		}

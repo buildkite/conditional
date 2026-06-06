@@ -470,7 +470,7 @@ func TestParsingArrayLiterals(t *testing.T) {
 	testIdentifierOrString(t, array.Elements[1], "alpacas")
 }
 
-func TestParsingContainsOperators(t *testing.T) {
+func TestParsingIncludesOperator(t *testing.T) {
 	tests := []struct {
 		input    string
 		operator string
@@ -490,12 +490,12 @@ func TestParsingContainsOperators(t *testing.T) {
 		}
 
 		if iexpr.Operator != tt.operator {
-			t.Fatalf("exp doesn't have expected contains operator. want=%s got=%s", tt.operator, iexpr.Operator)
+			t.Fatalf("exp doesn't have expected includes operator. want=%s got=%s", tt.operator, iexpr.Operator)
 		}
 	}
 }
 
-func TestParserRejectsNonServerContainsOperator(t *testing.T) {
+func TestParserRejectsAtGreaterOperator(t *testing.T) {
 	l := lexer.New(`["llamas", "alpacas"] @> "llamas"`)
 	p := New(l)
 	p.Parse()
