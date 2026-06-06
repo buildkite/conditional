@@ -1,29 +1,49 @@
 # Buildkite Conditional Evaluator
 
-A small Go library for validating and evaluating Buildkite conditional
-expressions.
+A Go library for validating and evaluating Buildkite conditional expressions
+with the same server-side syntax and semantics documented in
+[Using conditionals](https://buildkite.com/docs/pipelines/configure/conditionals).
 
-## What's supported?
+## Parity target
+
+`conditional` is intended to answer the same yes/no question that Buildkite
+answers when it evaluates a pipeline `if` attribute or notification condition.
+The public API models the Buildkite server inputs through `Context`, then parses,
+validates, and evaluates the expression against the documented conditional
+language.
+
+Any divergence from Buildkite's server-side conditional behavior should be
+treated as a bug. The library does not parse pipeline YAML or run the full
+pipeline upload process; callers provide the conditional expression and the
+Buildkite values that would be available at the selected entrypoint.
+
+## Supported syntax
 
 * Comparators: `== != =~ !~`
 * Logical operators: `|| &&`
-* Integers `12345`
-* Strings `'foobar' or "foobar"`
-* Booleans and nulls `true false null`
-* Parenthesis to control order of evaluation `( )`
+* Ternary conditionals: `condition ? when_true : when_false`
+* Parentheses to control grouping: `( )`
+* Literals: integers, strings, booleans, `null`, arrays, and regular
+  expressions
 * Buildkite identifiers such as `build.branch`
-* Regular expressions `/^v1\.0/`
-* Function calls such as `env("FOO")` and `build.env("FOO")`
-* Prefixes: `!`
-* Arrays: `["foo","bar"] includes "foo"`
+* Function calls such as `env("FOO")` and `build.env("FOO")`; dotted function
+  names are parsed as flat Buildkite function names
+* Prefix negation: `!`
+* Array membership: `["foo", "bar"] includes "foo"`
+* Shell-style environment substitution in operands and double-quoted strings
+* `//` comments
 
-### Syntax Examples
+### Syntax examples
 
 ```c
 // individual terms
 true
 false
 null
+12345
+"foobar"
+'foobar'
+["master", "staging"]
 
 // compare values
 build.branch == "master"
@@ -38,23 +58,37 @@ build.env("BUILDKITE_BRANCH") == build.branch
 build.tag =~ /^v/
 build.message !~ /\[skip tests\]/i
 
-// complex expressions
-((build.tag =~ /^v/) || (build.branch == "main"))
+// logical and ternary expressions
+(build.tag =~ /^v/) || (build.branch == "main")
+build.pull_request.id == null ? build.branch == "main" : true
 
 // array operations
-["master","staging"] includes build.branch
+["master", "staging"] includes build.branch
+build.creator.teams includes "deploy"
+
+// shell-style substitutions
+$branch == "main"
+${branch:-main} == "main"
+"deploy-${branch}" == "deploy-main"
+
+// comments
+build.branch == "main" // release branch
 ```
 
-The evaluator expects conditionals after Buildkite interpolation has already
-run. In pipeline YAML, escape `$` anchors to avoid interpolation; by the time the
-conditional is parsed, an end anchor should be a raw `$`. Regex escapes such as
-`\$` are preserved as literal-dollar matches.
+The evaluator parses the expression as the Buildkite server sees it. When an
+expression is embedded in pipeline YAML, upload-time interpolation may run
+before server-side conditional parsing, so escape `$` where the upload phase
+should leave a literal dollar in the conditional. Inside conditional syntax,
+shell-style substitutions such as `$branch` and `${branch:-main}` are evaluated
+against the Buildkite environment, while regex escapes such as `\$` keep their
+regular-expression meaning.
 
 ## Entrypoints
 
 Set `Context.EntryPoint` to the Buildkite location where the conditional runs:
 
 * `EntryPointBuildCondition` evaluates build conditionals without `step.*`.
+  This is also the default when `Context.EntryPoint` is empty.
 * `EntryPointBuildConditionWithStep` evaluates build conditionals where step
   variables are available.
 * `EntryPointBuildNotification` evaluates build notification conditionals.
@@ -65,7 +99,8 @@ Set `Context.EntryPoint` to the Buildkite location where the conditional runs:
 
 ## Variables
 
-The root API builds flat Buildkite assignments from `Context`:
+The root API builds flat Buildkite assignments from `Context`, matching the
+server's conditional assignment table:
 
 * `build.*` values come from `Context.Build`.
 * `pipeline.*` values come from documented `Context.Pipeline` fields:
@@ -73,21 +108,129 @@ The root API builds flat Buildkite assignments from `Context`:
   `started_failing`, and `next_finished_build_exists`.
 * `organization.*` values come from `Context.Organization`.
 * `step.*` values come from `Context.Step` only for step-aware entrypoints.
-* `env("NAME")` reads the merged build and project environment, returning an
-  empty string when the name is absent.
-* `build.env("NAME")` reads the same merged environment, returning `null` when
-  the name is absent.
 
 Missing documented nullable values evaluate as `null`. Unknown variables,
-unknown functions, unsupported `BUILDKITE_*` env names, invalid regular
-expressions, unsupported regular expression features, type mismatches, and
-non-boolean final results fail closed.
+unknown functions, invalid regular expressions, and server-unsupported regular
+expression features fail validation or parsing. Type mismatches, evaluation
+errors, and non-boolean final results fail closed.
+
+## Environment
+
+`Context.ProjectEnv` and `Context.BuildEnv` provide caller-supplied
+environment. Matching `Build::PipelineEnvironment`, project environment is
+applied first, build environment overrides it, and built-in Buildkite values
+derived from `Context` override both.
+
+* `env("NAME")` reads the merged environment and returns a string. Missing
+  values return `""`.
+* `build.env("NAME")` reads the same merged environment. Missing values return
+  `null`; present empty values return `""`.
+* Shell substitutions read the same merged environment. An unset standalone
+  substitution evaluates to `null`, and substitutions inside double-quoted
+  strings follow the server's shell-style expansion rules.
+* Literal `BUILDKITE_*` names passed to `env()` or `build.env()` are validated
+  against the server's static supported environment allowlist.
+* Dynamic `BUILDKITE_*` names are validated at runtime. This matches server
+  behavior for values such as `BUILDKITE_PULL_REQUEST_LABELS`, which is
+  runtime-derived but not accepted as a literal static `env()` or `build.env()`
+  argument.
 
 `Validate` always reports parse and validation errors. `Evaluate` reports errors
 for build condition entrypoints, while notification entrypoints return `false`
-for parse, validation, and evaluation errors.
+for parse, validation, and evaluation errors. Blank notification conditionals
+evaluate to `true`, matching Buildkite notification deliverability.
 
 ## Usage
+
+Evaluate a build conditional:
+
+```go
+branch := "main"
+message := "ship it"
+
+ok, err := conditional.Evaluate(
+	`build.branch == "main" && build.message !~ /\[skip tests\]/i`,
+	conditional.Context{
+		EntryPoint: conditional.EntryPointBuildCondition,
+		Build: conditional.Build{
+			Branch:  &branch,
+			Message: &message,
+		},
+	},
+)
+if err != nil {
+	log.Fatal(err)
+}
+
+log.Printf("should run: %t", ok)
+```
+
+Validate a conditional before storing it:
+
+```go
+err := conditional.Validate(
+	`build.env("DEPLOY_ENV") == "production" && ${branch:-main} == "main"`,
+	conditional.Context{EntryPoint: conditional.EntryPointBuildCondition},
+)
+if err != nil {
+	log.Fatal(err)
+}
+```
+
+Evaluate with Buildkite and custom environment values:
+
+```go
+branch := "main"
+
+ok, err := conditional.Evaluate(
+	`build.env("DEPLOY_ENV") == "production" && ${branch:-main} == "main"`,
+	conditional.Context{
+		EntryPoint: conditional.EntryPointBuildCondition,
+		Build: conditional.Build{
+			Branch: &branch,
+		},
+		ProjectEnv: map[string]string{
+			"DEPLOY_ENV": "staging",
+		},
+		BuildEnv: map[string]string{
+			"DEPLOY_ENV": "production",
+			"branch":     "main",
+		},
+	},
+)
+if err != nil {
+	log.Fatal(err)
+}
+
+log.Printf("should deploy: %t", ok)
+```
+
+Evaluate a step notification conditional:
+
+```go
+outcome := "passed"
+
+deliver, err := conditional.Evaluate(
+	`step.outcome == "passed"`,
+	conditional.Context{
+		EntryPoint: conditional.EntryPointStepNotification,
+		Step: &conditional.Step{
+			Outcome: &outcome,
+		},
+	},
+)
+if err != nil {
+	log.Fatal(err)
+}
+
+log.Printf("should notify: %t", deliver)
+```
+
+For notification entrypoints, `Evaluate` returns `false` instead of surfacing
+parse, validation, or evaluation errors, matching Buildkite notification
+deliverability.
+
+Full example:
 
 ```go
 package main
