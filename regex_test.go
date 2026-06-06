@@ -138,6 +138,24 @@ func TestConditionalRegexValidation(t *testing.T) {
 			wantError:  ErrorKindParse,
 		},
 		{
+			name:       "bounded possessive quantifier fails during parsing",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"aaa" =~ /a{1,3}+/`,
+			wantError:  ErrorKindParse,
+		},
+		{
+			name:       "exact bounded possessive quantifier fails during parsing",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"aaa" =~ /a{3}+/`,
+			wantError:  ErrorKindParse,
+		},
+		{
+			name:       "open ended bounded possessive quantifier fails during parsing",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"aaa" =~ /a{2,}+/`,
+			wantError:  ErrorKindParse,
+		},
+		{
 			name:       "angle named capture fails during parsing",
 			source:     upstreamConditionalRegexpModel,
 			expression: `"group" =~ /(?<name>group)/`,
@@ -171,6 +189,16 @@ func TestConditionalRegexValidation(t *testing.T) {
 			name:       "escaped unsupported tokens remain literals",
 			source:     upstreamConditionalRegexpModel,
 			expression: `"(?<=a)" =~ /\(\?<=a\)/`,
+		},
+		{
+			name:       "escaped bounded quantifier text remains literal",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"{1,3}+" =~ /\{1,3\}\+/`,
+		},
+		{
+			name:       "bare closing brace remains literal",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"}}}" =~ /}+/`,
 		},
 		{
 			name:       "character class unsupported tokens remain literals",

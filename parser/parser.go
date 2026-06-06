@@ -350,6 +350,10 @@ func validateRegexp(pattern string) error {
 				return unsupportedRegexpFeature("zero_or_more_possessive")
 			case '+':
 				return unsupportedRegexpFeature("one_or_more_possessive")
+			case '}':
+				if isBoundedRegexpQuantifierEnd(pattern, i) {
+					return unsupportedRegexpFeature("bounded_possessive")
+				}
 			}
 		}
 	}
@@ -381,6 +385,50 @@ func regexpCommentEnd(pattern string, start int) int {
 		}
 	}
 	return -1
+}
+
+func isBoundedRegexpQuantifierEnd(pattern string, close int) bool {
+	for open := close - 1; open >= 0; open-- {
+		if pattern[open] != '{' {
+			continue
+		}
+		if isEscapedRegexpByte(pattern, open) {
+			return false
+		}
+		return isRegexpQuantifierBounds(pattern[open+1 : close])
+	}
+	return false
+}
+
+func isEscapedRegexpByte(pattern string, offset int) bool {
+	backslashes := 0
+	for i := offset - 1; i >= 0 && pattern[i] == '\\'; i-- {
+		backslashes++
+	}
+	return backslashes%2 == 1
+}
+
+func isRegexpQuantifierBounds(bounds string) bool {
+	if bounds == "" {
+		return false
+	}
+
+	digitsBeforeComma := 0
+	seenComma := false
+	for i := 0; i < len(bounds); i++ {
+		ch := bounds[i]
+		switch {
+		case ch >= '0' && ch <= '9':
+			if !seenComma {
+				digitsBeforeComma++
+			}
+		case ch == ',' && !seenComma:
+			seenComma = true
+		default:
+			return false
+		}
+	}
+	return digitsBeforeComma != 0
 }
 
 func hasRegexpPrefix(pattern string, offset int, prefix string) bool {

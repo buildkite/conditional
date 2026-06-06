@@ -959,7 +959,8 @@ Current Slice 6 progress:
 - Review hardening now covers RE2-style `(?P<name>...)` named captures, POSIX
   classes followed by literal unsupported-looking tokens, leading literal `]`
   inside character classes, unsupported-looking tokens inside regex comments,
-  and Ruby-compatible first-`)` regex comment termination.
+  Ruby-compatible first-`)` regex comment termination, and bounded possessive
+  quantifiers such as `{1,3}+` and `{2,}+`.
 
 ### Slice 7: Divergence Removal And Codebase Cleanup
 
