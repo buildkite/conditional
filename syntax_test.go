@@ -102,6 +102,12 @@ func TestConditionalSyntaxErrors(t *testing.T) {
 			wantError:  ErrorKindParse,
 		},
 		{
+			name:       "parse error for out of range octal string escape",
+			source:     upstreamConditionalGrammar,
+			expression: `"\400" == ""`,
+			wantError:  ErrorKindParse,
+		},
+		{
 			name:       "parser rejects local-only contains operator",
 			source:     upstreamParserSpec,
 			expression: `["main"] @> build.branch`,
@@ -187,6 +193,12 @@ func TestConditionalSyntaxErrors(t *testing.T) {
 			name:       "validation rejects invalid enum literal",
 			source:     upstreamBuildConditionSpec,
 			expression: `build.state == "faillled"`,
+			wantError:  ErrorKindValidation,
+		},
+		{
+			name:       "validation rejects escaped static dollar enum literal",
+			source:     upstreamConditionalGrammar,
+			expression: `build.state == "\\\$STATE"`,
 			wantError:  ErrorKindValidation,
 		},
 		{

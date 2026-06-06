@@ -47,6 +47,7 @@ type Token struct {
 	Type    TokenType
 	Literal string
 	Flags   string
+	Raw     string
 }
 
 var keywords = map[string]TokenType{

@@ -343,8 +343,8 @@ Initial manifest:
 
 | Upstream source | Groups to account for | Current status | Required status before parity claim |
 | --- | --- | --- | --- |
-| `spec/models/conditional/parser_spec.rb` | friendly errors, comments, objects/properties, function calls, complex strings, simple expressions, operand precedence, negation, token positions | `blocked`: Slice 3 ports flat dotted identifiers/functions, ternary precedence, shell expansion operands, malformed dotted-name rejection, and parser-level rejection of `@>`; Slice 4 starts double-quoted shell interpolation. Exact friendly messages, token positions, and full string escape parity remain follow-up parser work | `ported` or `intentionally_excluded` with reason |
-| `spec/models/conditional/evaluator_spec.rb` | booleans, nulls, arrays, regexes, string comparisons, ternaries, variables/enums, shell substitutions | `blocked`: Slice 4 ports regex includes, null regex/includes semantics, shell substitution evaluation, double-quoted interpolation, enum literal validation, logical type-checking before runtime short-circuiting, enum comparison asymmetry, array equality/null comparisons, Ruby-style falsey runtime behavior for typed nil booleans, and representative type-checker rejection cases. Full custom function/lazy variable coverage remains | `ported` |
+| `spec/models/conditional/parser_spec.rb` | friendly errors, comments, objects/properties, function calls, complex strings, simple expressions, operand precedence, negation, token positions | `blocked`: Slice 3 ports flat dotted identifiers/functions, ternary precedence, shell expansion operands, malformed dotted-name rejection, and parser-level rejection of `@>`; Slice 4 ports server string escape decoding for single-quoted and double-quoted strings plus quote-aware shell fallback scanning. Exact friendly messages and token positions remain follow-up parser work | `ported` or `intentionally_excluded` with reason |
+| `spec/models/conditional/evaluator_spec.rb` | booleans, nulls, arrays, regexes, string comparisons, ternaries, variables/enums, shell substitutions | `blocked`: Slice 4 ports regex includes, null regex/includes semantics, shell substitution evaluation, double-quoted interpolation, server string escapes, shell fallback string grammar, enum literal validation, logical type-checking before runtime short-circuiting, enum comparison asymmetry, array equality/null comparisons, Ruby-style falsey runtime behavior for typed nil booleans, and representative type-checker rejection cases. Full custom function/lazy variable coverage remains | `ported` |
 | `spec/models/conditional/variable_spec.rb` | typed variables, nullable typed values, enums, lazy values | `blocked`: Slice 4 ports the server's declared-type behavior for nil values: typed nil strings, booleans, arrays, and enums type-check as their declared type rather than nullable unions. Lazy variable internals and exhaustive variable specs remain Slice 5/cleanup work | `ported` or `superseded` by Go type/context tests |
 | `spec/models/build/condition_spec.rb` | `env()`, `build.env()`, build/pipeline/org fields, webhook fields, pull request label, project env merge, validation, context construction | `blocked`: Slice 2 seeds source-tagged root cases for representative `env()`, `build.env()`, organization, pipeline, webhook, pull request label, project env merge, and validation behavior; the exhaustive context matrix is Slice 5 | `ported` |
 | `spec/validators/build_condition_validator_spec.rb` | blank/nil validation, invalid conditionals, step-variable validation option | `blocked`: Slice 2 ports blank string, invalid expression, step-variable rejection, and step-option acceptance through root validation; nil validation is not representable in the string API | `ported` or `intentionally_excluded` with reason |
@@ -393,6 +393,10 @@ from this plan.
   enum-to-static-string comparisons, logical operands are type-checked on both
   sides before runtime short-circuiting, and ternary branches do not create
   flow-sensitive nullable unions.
+- Slice 4 also ports server string escape semantics for single-quoted,
+  double-quoted, and shell fallback strings. String tokens now keep both decoded
+  values and raw source bodies so escaped dollars stay static while unescaped
+  shell substitutions still evaluate through the Buildkite environment.
 - Some landed behavior is still explicitly provisional because it diverges from
   the server regex validator or still lacks exhaustive custom function/lazy
   variable coverage.
@@ -417,8 +421,13 @@ from this plan.
 - Shell expansion operands now evaluate against the merged Buildkite
   environment for set, unset, empty, required, default, alternate, substring,
   nested substring argument, and bad substring length cases.
-- Double-quoted strings now evaluate shell substitutions, while single-quoted
-  strings keep shell-looking text literal.
+- Double-quoted strings now evaluate shell substitutions, collapse `$$` to a
+  literal dollar, and decode the server escape set. Single-quoted strings decode
+  only the server-supported `\\` and `\'` escapes and keep shell-looking text
+  literal.
+- Shell fallback strings now decode server escapes, support nested single- and
+  double-quoted fallback strings, and keep braces inside nested fallback quotes
+  from closing the surrounding `${...}` expression.
 - Server-supported cases that the current implementation cannot pass are not
   added as skipped tests. They remain recorded in the manifest and known gaps
   until the parser, evaluator, context, and regex parity slices implement them.
@@ -433,7 +442,7 @@ from this plan.
 | Dotted names | Parser and evaluator internals now use flat dotted identifiers for server variables. Some public implementation packages still expose older generic-language concepts during transition. | Finish removing nested object lookup assumptions and move implementation packages under `internal/` in the cleanup slice. |
 | `build.env()` | `build.env("NAME")` parses as a flat function identifier, type-checks with the server's string return token type, and evaluates to `null` for absent variables through the root adapter. | Expand validator and conformance coverage for the full server env matrix in Slice 5. |
 | Ternary syntax | Ternaries parse with server precedence, evaluate lazily, use Ruby truthiness for nil runtime conditions, and type-check branch compatibility without local nullable-union narrowing. | Expand conformance coverage for every upstream ternary type-checker case before marking Slice 4 complete. |
-| Shell substitution | Shell expansion operands and double-quoted interpolation evaluate for the upstream set/unset/empty/default/alternate/required/substring matrix. | Finish exact string escape parity, shell fallback string grammar coverage, and package-local parser/evaluator tests for edge cases beyond the current root tables. |
+| Shell substitution | Shell expansion operands, double-quoted interpolation, server string escapes, and quoted fallback strings evaluate for the upstream set/unset/empty/default/alternate/required/substring matrix and representative fallback grammar cases. | Finish custom function/lazy variable coverage and expand the upstream parser/evaluator matrix until every shell substitution group is accounted for. |
 | Scope | Callers pass arbitrary `object.Struct`. | Add server-style Buildkite assignment tables with documented variables and context availability. |
 | Nullable values | Documented nullable Buildkite assignments are present as runtime `null` while keeping their server-declared type for validation. Truly unknown variables still fail closed. | Finish the exhaustive context matrix and lazy variable coverage so every documented nullable field is covered in every entrypoint. |
 | Context restrictions | No context kind. | Enforce pipeline, step, build-notification, and step-notification variable availability. |
@@ -773,11 +782,15 @@ Current Slice 4 progress:
   values, empty values, and invalid substring lengths.
 - Double-quoted strings interpolate shell substitutions and collapse `$$` to a
   literal dollar. Single-quoted strings remain literal.
-- Remaining Slice 4 work before marking the slice landed: exact server string
-  escape parity across single-quoted, double-quoted, and shell fallback strings;
-  broader upstream type-checker cases for custom functions and lazy variables;
-  and package-local parser/evaluator tests for the substitution grammar beyond
-  the current root conformance tables.
+- String escape evaluation now matches the server grammar for single-quoted,
+  double-quoted, and shell fallback strings, including newline, space, control,
+  byte-oriented hex and octal escapes, out-of-range octal rejection, unknown
+  double-quoted escapes, single-quoted `\\`/`\'`, escaped dollars, and braces
+  inside nested quoted fallback strings.
+- Remaining Slice 4 work before marking the slice landed: broader upstream
+  type-checker cases for custom functions and lazy variables, plus a final pass
+  over the upstream evaluator/parser groups to ensure no substitution grammar
+  cases are unaccounted for.
 
 ### Slice 5: Buildkite Context And `env()` Semantics
 

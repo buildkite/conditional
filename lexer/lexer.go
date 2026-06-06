@@ -1,6 +1,9 @@
 package lexer
 
 import (
+	"strconv"
+	"strings"
+
 	"github.com/buildkite/conditional/token"
 )
 
@@ -93,19 +96,21 @@ func (l *Lexer) NextToken() token.Token {
 	case '"':
 		tok.Type = token.STRING
 		var terminated bool
-		tok.Literal, terminated = l.readString('"')
+		tok.Literal, tok.Raw, terminated = l.readString('"')
 		tok.Flags = `"`
 		if !terminated {
 			tok.Type = token.ILLEGAL
+			tok.Literal = tok.Raw
 			tok.Flags = ""
 		}
 	case '\'':
 		tok.Type = token.STRING
 		var terminated bool
-		tok.Literal, terminated = l.readString('\'')
+		tok.Literal, tok.Raw, terminated = l.readString('\'')
 		tok.Flags = `'`
 		if !terminated {
 			tok.Type = token.ILLEGAL
+			tok.Literal = tok.Raw
 			tok.Flags = ""
 		}
 	case '/':
@@ -202,22 +207,122 @@ func (l *Lexer) readNumber() string {
 	return l.input[position:l.position]
 }
 
-func (l *Lexer) readString(quote byte) (string, bool) {
+func (l *Lexer) readString(quote byte) (string, string, bool) {
 	position := l.position + 1
-	escaped := false
+	var out strings.Builder
 	for {
 		l.readChar()
 		if l.ch == 0 {
-			return l.input[position:l.position], false
+			return out.String(), l.input[position:l.position], false
 		}
-		if l.ch == quote && !escaped {
-			return l.input[position:l.position], true
+		if l.ch == quote {
+			return out.String(), l.input[position:l.position], true
 		}
-		escaped = l.ch == '\\' && !escaped
 		if l.ch != '\\' {
-			escaped = false
+			out.WriteByte(l.ch)
+			continue
+		}
+
+		if quote == '\'' {
+			if !l.readSingleQuotedEscape(&out) {
+				return out.String(), l.input[position:l.position], false
+			}
+			continue
+		}
+		if !l.readStringEscape(&out) {
+			return out.String(), l.input[position:l.position], false
 		}
 	}
+}
+
+func (l *Lexer) readSingleQuotedEscape(out *strings.Builder) bool {
+	l.readChar()
+	if l.ch == 0 {
+		return false
+	}
+	switch l.ch {
+	case '\\', '\'':
+		out.WriteByte(l.ch)
+	default:
+		out.WriteByte('\\')
+		out.WriteByte(l.ch)
+	}
+	return true
+}
+
+func (l *Lexer) readStringEscape(out *strings.Builder) bool {
+	l.readChar()
+	if l.ch == 0 {
+		return false
+	}
+
+	switch l.ch {
+	case 'n':
+		out.WriteByte('\n')
+	case 's':
+		out.WriteByte(' ')
+	case 'r':
+		out.WriteByte('\r')
+	case 't':
+		out.WriteByte('\t')
+	case 'v':
+		out.WriteByte('\v')
+	case 'f':
+		out.WriteByte('\f')
+	case 'b':
+		out.WriteByte('\b')
+	case 'a':
+		out.WriteByte('\a')
+	case 'e':
+		out.WriteByte('\x1b')
+	case '\\', '"':
+		out.WriteByte(l.ch)
+	case 'x':
+		if l.readHexEscape(out) {
+			return true
+		}
+		out.WriteByte('x')
+	default:
+		if isOctalDigit(l.ch) {
+			return l.readOctalEscape(out)
+		}
+		out.WriteByte(l.ch)
+	}
+	return true
+}
+
+func (l *Lexer) readHexEscape(out *strings.Builder) bool {
+	if l.readPosition+1 >= len(l.input) {
+		return false
+	}
+	if !isHexDigit(l.input[l.readPosition]) || !isHexDigit(l.input[l.readPosition+1]) {
+		return false
+	}
+
+	digits := l.input[l.readPosition : l.readPosition+2]
+	value, err := strconv.ParseInt(digits, 16, 32)
+	if err != nil {
+		return false
+	}
+	l.readChar()
+	l.readChar()
+	out.WriteByte(byte(value))
+	return true
+}
+
+func (l *Lexer) readOctalEscape(out *strings.Builder) bool {
+	digits := []byte{l.ch}
+	for len(digits) < 3 && l.readPosition < len(l.input) && isOctalDigit(l.input[l.readPosition]) {
+		l.readChar()
+		digits = append(digits, l.ch)
+	}
+
+	value, err := strconv.ParseInt(string(digits), 8, 32)
+	if err != nil || value > 0xff {
+		return false
+	}
+	out.WriteByte(byte(value))
+	return true
 }
 
 func (l *Lexer) readShell() (string, bool) {
@@ -248,6 +353,10 @@ func (l *Lexer) readShell() (string, bool) {
 		case l.ch == '\\' && !escaped:
 			escaped = true
 			continue
+		case (l.ch == '"' || l.ch == '\'') && !escaped:
+			if !l.skipRawQuotedString(l.ch) {
+				return l.input[position:l.position], false
+			}
 		case l.ch == '{' && !escaped:
 			depth++
 		case l.ch == '}' && !escaped:
@@ -259,6 +368,23 @@ func (l *Lexer) readShell() (string, bool) {
 		}
 
 		escaped = false
+	}
+}
+
+func (l *Lexer) skipRawQuotedString(quote byte) bool {
+	escaped := false
+	for {
+		l.readChar()
+		if l.ch == 0 {
+			return false
+		}
+		if l.ch == quote && !escaped {
+			return true
+		}
+		escaped = l.ch == '\\' && !escaped
+		if l.ch != '\\' {
+			escaped = false
+		}
 	}
 }
 
@@ -310,6 +436,14 @@ func isIdentPart(ch byte) bool {
 
 func isDigit(ch byte) bool {
 	return '0' <= ch && ch <= '9'
+}
+
+func isOctalDigit(ch byte) bool {
+	return '0' <= ch && ch <= '7'
+}
+
+func isHexDigit(ch byte) bool {
+	return isDigit(ch) || ('a' <= ch && ch <= 'f') || ('A' <= ch && ch <= 'F')
 }
 
 func newToken(tokenType token.TokenType, ch byte) token.Token {

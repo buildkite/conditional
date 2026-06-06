@@ -423,7 +423,11 @@ func describeKinds(kinds []valueKind) string {
 }
 
 func runtimeStringLiteral(literal *ast.StringLiteral) bool {
-	return literal.Token.Flags == `"` && evaluator.ContainsShellExpansion(literal.Value)
+	raw := literal.Token.Raw
+	if raw == "" {
+		raw = literal.Value
+	}
+	return literal.Token.Flags == `"` && evaluator.ContainsShellExpansion(raw)
 }
 
 func staticStringLiteral(expr ast.Expression) (*ast.StringLiteral, bool) {

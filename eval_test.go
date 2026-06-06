@@ -525,6 +525,70 @@ func TestConditionalShellSubstitutionEvaluation(t *testing.T) {
 			ctx:        ctx,
 			want:       false,
 		},
+		{
+			name:   "double quoted string escapes are decoded",
+			source: upstreamParserSpec,
+			expression: `"line\nfeed" == "line
+feed"`,
+			ctx:  ctx,
+			want: true,
+		},
+		{
+			name:       "double quoted hex and octal escapes are decoded",
+			source:     upstreamParserSpec,
+			expression: `"hex\x41 octal\141" == "hexA octala"`,
+			ctx:        ctx,
+			want:       true,
+		},
+		{
+			name:       "single quoted unknown escapes stay literal",
+			source:     upstreamParserSpec,
+			expression: `'\n' == "\\n"`,
+			ctx:        ctx,
+			want:       true,
+		},
+		{
+			name:       "double quoted escaped dollar after escaped slash stays literal",
+			source:     upstreamConditionalGrammar,
+			expression: `"\\\$branch" == '\$branch'`,
+			ctx:        ctx,
+			want:       true,
+		},
+		{
+			name:       "shell fallback decodes string escapes",
+			source:     upstreamConditionalGrammar,
+			expression: `${notset-\x41\svalue} == "A value"`,
+			ctx:        ctx,
+			want:       true,
+		},
+		{
+			name:       "shell fallback removes nested double quotes",
+			source:     upstreamParserSpec,
+			expression: `${notset-"${branch}"} == "main"`,
+			ctx:        ctx,
+			want:       true,
+		},
+		{
+			name:       "shell fallback preserves brace inside nested quotes",
+			source:     upstreamConditionalGrammar,
+			expression: `${notset-"}"} == "}"`,
+			ctx:        ctx,
+			want:       true,
+		},
+		{
+			name:       "shell fallback rejects out of range octal escape",
+			source:     upstreamConditionalGrammar,
+			expression: `${notset-\400} == ""`,
+			ctx:        ctx,
+			wantError:  ErrorKindEvaluation,
+		},
+		{
+			name:       "shell fallback removes nested single quotes",
+			source:     upstreamParserSpec,
+			expression: `${notset-'quoted fallback'} == "quoted fallback"`,
+			ctx:        ctx,
+			want:       true,
+		},
 	}
 
 	runEvaluateCases(t, tests)
