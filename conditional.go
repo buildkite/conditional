@@ -1,6 +1,7 @@
 package conditional
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -80,13 +81,25 @@ func parse(expression string) (ast.Expression, error) {
 	expr := p.Parse()
 
 	if errs := p.Errors(); len(errs) > 0 {
-		return nil, &Error{Kind: ErrorKindParse, Message: strings.Join(errs, "; ")}
+		return nil, &Error{
+			Kind:    ErrorKindParse,
+			Message: joinErrorMessages(errs),
+			Cause:   errors.Join(errs...),
+		}
 	}
 	if expr == nil {
 		return nil, &Error{Kind: ErrorKindParse, Message: "empty expression"}
 	}
 
 	return expr, nil
+}
+
+func joinErrorMessages(errs []error) string {
+	messages := make([]string, 0, len(errs))
+	for _, err := range errs {
+		messages = append(messages, err.Error())
+	}
+	return strings.Join(messages, "; ")
 }
 
 func validateExpression(expr ast.Expression, ctx Context) error {

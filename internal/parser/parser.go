@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -43,7 +44,7 @@ type (
 
 type Parser struct {
 	l      *lexer.Lexer
-	errors []string
+	errors []error
 
 	curToken  token.Token
 	peekToken token.Token
@@ -55,7 +56,7 @@ type Parser struct {
 func New(l *lexer.Lexer) *Parser {
 	p := &Parser{
 		l:      l,
-		errors: []string{},
+		errors: []error{},
 	}
 
 	p.prefixParseFns = make(map[token.TokenType]prefixParseFn)
@@ -112,26 +113,26 @@ func (p *Parser) expectPeek(t token.TokenType) bool {
 	}
 }
 
-func (p *Parser) Errors() []string {
+func (p *Parser) Errors() []error {
 	return p.errors
 }
 
 func (p *Parser) peekError(t token.TokenType) {
-	msg := fmt.Sprintf("expected next token to be %s, got %s instead",
-		t, p.peekToken.Type)
-	p.errors = append(p.errors, msg)
+	p.errors = append(p.errors, fmt.Errorf(
+		"expected next token to be %s, got %s instead",
+		t, p.peekToken.Type,
+	))
 }
 
 func (p *Parser) noPrefixParseFnError(t token.TokenType) {
-	msg := fmt.Sprintf("no prefix parse function for %s found", t)
-	p.errors = append(p.errors, msg)
+	p.errors = append(p.errors, fmt.Errorf("no prefix parse function for %s found", t))
 }
 
 func (p *Parser) Parse() ast.Expression {
 	// defer untrace(trace("Parse"))
 
 	if p.curToken.Type == token.EOF {
-		p.errors = append(p.errors, "empty expression")
+		p.errors = append(p.errors, errors.New("empty expression"))
 		return nil
 	}
 
@@ -141,9 +142,10 @@ func (p *Parser) Parse() ast.Expression {
 	}
 
 	if !p.peekTokenIs(token.EOF) {
-		msg := fmt.Sprintf("unexpected token after expression: %s (%q)",
-			p.peekToken.Type, p.peekToken.Literal)
-		p.errors = append(p.errors, msg)
+		p.errors = append(p.errors, fmt.Errorf(
+			"unexpected token after expression: %s (%q)",
+			p.peekToken.Type, p.peekToken.Literal,
+		))
 	}
 
 	return exp
@@ -192,8 +194,7 @@ func (p *Parser) curPrecedence() int {
 func (p *Parser) parseIdentifier() ast.Expression {
 	// defer untrace(trace("parseIdentifier", p.curToken))
 	if invalidDottedIdentifier(p.curToken.Literal) {
-		msg := fmt.Sprintf("invalid dotted identifier: %s", p.curToken.Literal)
-		p.errors = append(p.errors, msg)
+		p.errors = append(p.errors, fmt.Errorf("invalid dotted identifier: %s", p.curToken.Literal))
 		return nil
 	}
 	return &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
@@ -209,8 +210,7 @@ func (p *Parser) parseIntegerLiteral() ast.Expression {
 
 	value, err := strconv.ParseInt(p.curToken.Literal, 0, 64)
 	if err != nil {
-		msg := fmt.Sprintf("could not parse %q as integer", p.curToken.Literal)
-		p.errors = append(p.errors, msg)
+		p.errors = append(p.errors, fmt.Errorf("could not parse %q as integer", p.curToken.Literal))
 		return nil
 	}
 
@@ -232,7 +232,7 @@ func (p *Parser) parseRegexp() ast.Expression {
 
 	r, err := regex.Compile(p.curToken.Literal, p.curToken.Flags)
 	if err != nil {
-		p.errors = append(p.errors, err.Error())
+		p.errors = append(p.errors, err)
 		return nil
 	}
 	ar.Regexp = r
@@ -318,8 +318,7 @@ func (p *Parser) parseCallExpression(function ast.Expression) ast.Expression {
 
 	name, ok := functionName(function)
 	if !ok {
-		msg := fmt.Sprintf("function call must be an identifier, got %v", p.curToken.Type)
-		p.errors = append(p.errors, msg)
+		p.errors = append(p.errors, fmt.Errorf("function call must be an identifier, got %v", p.curToken.Type))
 		return nil
 	}
 

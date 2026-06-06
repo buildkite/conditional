@@ -143,6 +143,10 @@ for build condition entrypoints, while notification entrypoints return `false`
 for parse, validation, and evaluation errors. Blank notification conditionals
 evaluate to `true`, matching Buildkite notification deliverability.
 
+Returned errors are `*conditional.Error` values with a stable `Kind`. Parse
+errors also unwrap to the underlying parser errors, so callers can inspect the
+cause with `errors.Unwrap`.
+
 ## Usage
 
 Evaluate a build conditional:

@@ -1,6 +1,10 @@
 package conditional
 
-import "testing"
+import (
+	"errors"
+	"strings"
+	"testing"
+)
 
 func TestRootValidateAndEvaluateErrorKinds(t *testing.T) {
 	tests := []evaluateCase{
@@ -63,4 +67,22 @@ func TestRootValidateErrorKinds(t *testing.T) {
 	}
 
 	runValidateCases(t, tests)
+}
+
+func TestParseErrorUnwrapsParserErrors(t *testing.T) {
+	err := Validate(`nope != == one`, Context{EntryPoint: EntryPointBuildCondition})
+	if err == nil {
+		t.Fatal("expected parse error")
+	}
+	if !IsErrorKind(err, ErrorKindParse) {
+		t.Fatalf("expected parse error kind, got %v", err)
+	}
+
+	cause := errors.Unwrap(err)
+	if cause == nil {
+		t.Fatal("expected parse error to unwrap to parser errors")
+	}
+	if !strings.Contains(cause.Error(), "no prefix parse function for == found") {
+		t.Fatalf("unexpected parse cause: %v", cause)
+	}
 }
