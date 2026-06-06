@@ -1,9 +1,9 @@
 package lexer
 
 import (
-	"strconv"
 	"strings"
 
+	"github.com/buildkite/conditional/internal/shell"
 	"github.com/buildkite/conditional/internal/token"
 )
 
@@ -236,156 +236,34 @@ func (l *Lexer) readString(quote byte) (string, string, bool) {
 }
 
 func (l *Lexer) readSingleQuotedEscape(out *strings.Builder) bool {
-	l.readChar()
-	if l.ch == 0 {
+	value, next, err := shell.ReadSingleQuotedEscape(l.input, l.position)
+	if err != nil {
+		l.setCursor(len(l.input))
 		return false
 	}
-	switch l.ch {
-	case '\\', '\'':
-		out.WriteByte(l.ch)
-	default:
-		out.WriteByte('\\')
-		out.WriteByte(l.ch)
-	}
+	out.WriteString(value)
+	l.setCursor(next - 1)
 	return true
 }
 
 func (l *Lexer) readStringEscape(out *strings.Builder) bool {
-	l.readChar()
-	if l.ch == 0 {
-		return false
-	}
-
-	switch l.ch {
-	case 'n':
-		out.WriteByte('\n')
-	case 's':
-		out.WriteByte(' ')
-	case 'r':
-		out.WriteByte('\r')
-	case 't':
-		out.WriteByte('\t')
-	case 'v':
-		out.WriteByte('\v')
-	case 'f':
-		out.WriteByte('\f')
-	case 'b':
-		out.WriteByte('\b')
-	case 'a':
-		out.WriteByte('\a')
-	case 'e':
-		out.WriteByte('\x1b')
-	case '\\', '"':
-		out.WriteByte(l.ch)
-	case 'x':
-		if l.readHexEscape(out) {
-			return true
-		}
-		out.WriteByte('x')
-	default:
-		if isOctalDigit(l.ch) {
-			return l.readOctalEscape(out)
-		}
-		out.WriteByte(l.ch)
-	}
-	return true
-}
-
-func (l *Lexer) readHexEscape(out *strings.Builder) bool {
-	if l.readPosition+1 >= len(l.input) {
-		return false
-	}
-	if !isHexDigit(l.input[l.readPosition]) || !isHexDigit(l.input[l.readPosition+1]) {
-		return false
-	}
-
-	digits := l.input[l.readPosition : l.readPosition+2]
-	value, err := strconv.ParseInt(digits, 16, 32)
+	value, next, err := shell.ReadStringEscape(l.input, l.position)
 	if err != nil {
+		l.setCursor(len(l.input))
 		return false
 	}
-	l.readChar()
-	l.readChar()
-	out.WriteByte(byte(value))
-	return true
-}
-
-func (l *Lexer) readOctalEscape(out *strings.Builder) bool {
-	digits := []byte{l.ch}
-	for len(digits) < 3 && l.readPosition < len(l.input) && isOctalDigit(l.input[l.readPosition]) {
-		l.readChar()
-		digits = append(digits, l.ch)
-	}
-
-	value, err := strconv.ParseInt(string(digits), 8, 32)
-	if err != nil || value > 0xff {
-		return false
-	}
-	out.WriteByte(byte(value))
+	out.WriteString(value)
+	l.setCursor(next - 1)
 	return true
 }
 
 func (l *Lexer) readShell() (string, bool) {
-	position := l.position
-	l.readChar()
-
-	if isIdentStart(l.ch) {
-		for isIdentPart(l.ch) {
-			l.readChar()
-		}
-		return l.input[position:l.position], true
+	raw, next, ok := shell.ReadExpansion(l.input, l.position)
+	if !ok {
+		raw, next = l.invalidShellToken()
 	}
-
-	if l.ch != '{' {
-		l.readChar()
-		return l.input[position:l.position], false
-	}
-
-	depth := 1
-	escaped := false
-	for {
-		l.readChar()
-		if l.ch == 0 {
-			return l.input[position:l.position], false
-		}
-
-		switch {
-		case l.ch == '\\' && !escaped:
-			escaped = true
-			continue
-		case (l.ch == '"' || l.ch == '\'') && !escaped:
-			if !l.skipRawQuotedString(l.ch) {
-				return l.input[position:l.position], false
-			}
-		case l.ch == '{' && !escaped:
-			depth++
-		case l.ch == '}' && !escaped:
-			depth--
-			if depth == 0 {
-				l.readChar()
-				return l.input[position:l.position], true
-			}
-		}
-
-		escaped = false
-	}
-}
-
-func (l *Lexer) skipRawQuotedString(quote byte) bool {
-	escaped := false
-	for {
-		l.readChar()
-		if l.ch == 0 {
-			return false
-		}
-		if l.ch == quote && !escaped {
-			return true
-		}
-		escaped = l.ch == '\\' && !escaped
-		if l.ch != '\\' {
-			escaped = false
-		}
-	}
+	l.setCursor(next)
+	return raw, ok
 }
 
 func (l *Lexer) readRegex() (string, string, bool) {
@@ -438,14 +316,26 @@ func isDigit(ch byte) bool {
 	return '0' <= ch && ch <= '9'
 }
 
-func isOctalDigit(ch byte) bool {
-	return '0' <= ch && ch <= '7'
-}
-
-func isHexDigit(ch byte) bool {
-	return isDigit(ch) || ('a' <= ch && ch <= 'f') || ('A' <= ch && ch <= 'F')
-}
-
 func newToken(tokenType token.TokenType, ch byte) token.Token {
 	return token.Token{Type: tokenType, Literal: string(ch)}
+}
+
+func (l *Lexer) invalidShellToken() (string, int) {
+	start := l.position
+	if start+1 >= len(l.input) || l.input[start+1] == '{' {
+		return l.input[start:], len(l.input)
+	}
+	return l.input[start : start+2], min(start+2, len(l.input))
+}
+
+func (l *Lexer) setCursor(position int) {
+	if position >= len(l.input) {
+		l.position = len(l.input)
+		l.readPosition = len(l.input) + 1
+		l.ch = 0
+		return
+	}
+	l.position = position
+	l.readPosition = position + 1
+	l.ch = l.input[position]
 }

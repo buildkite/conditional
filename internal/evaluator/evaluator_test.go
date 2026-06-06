@@ -130,15 +130,17 @@ func TestCallOperator(t *testing.T) {
 		expected bool
 	}{
 		{"env('test') == 'test'", true},
-		{"env(foo('a', 'b')) == 'test'", true},
+		{"env(env('name')) == 'test'", true},
 	}
 
 	env := object.Struct{
 		`env`: object.Function(func(args []object.Object) object.Object {
-			return args[0]
-		}),
-		`foo`: object.Function(func(args []object.Object) object.Object {
-			return &object.String{Value: "test"}
+			name := args[0].(*object.String).Value
+			values := map[string]string{
+				"name": "test",
+				"test": "test",
+			}
+			return &object.String{Value: values[name]}
 		}),
 	}
 

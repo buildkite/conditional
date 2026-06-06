@@ -4,15 +4,12 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/buildkite/conditional/internal/ast"
 	"github.com/buildkite/conditional/internal/lexer"
+	"github.com/buildkite/conditional/internal/regex"
 	"github.com/buildkite/conditional/internal/token"
-	"github.com/dlclark/regexp2"
 )
-
-const regexpMatchTimeout = time.Second
 
 const (
 	_ int = iota
@@ -233,209 +230,13 @@ func (p *Parser) parseShellExpansion() ast.Expression {
 func (p *Parser) parseRegexp() ast.Expression {
 	ar := &ast.Regexp{Token: p.curToken, Flags: p.curToken.Flags}
 
-	options, err := regexpOptions(p.curToken.Flags)
+	r, err := regex.Compile(p.curToken.Literal, p.curToken.Flags)
 	if err != nil {
 		p.errors = append(p.errors, err.Error())
 		return nil
 	}
-	if err := validateRegexp(p.curToken.Literal); err != nil {
-		p.errors = append(p.errors, err.Error())
-		return nil
-	}
-
-	r, err := regexp2.Compile(p.curToken.Literal, options)
-	if err != nil {
-		msg := fmt.Sprintf("could not parse regexp: %v", err)
-		p.errors = append(p.errors, msg)
-		return nil
-	}
-	// regexp2 is intentionally used for Buildkite server-side syntax parity.
-	// It can backtrack, so keep matching bounded.
-	r.MatchTimeout = regexpMatchTimeout
-
 	ar.Regexp = r
 	return ar
-}
-
-func regexpOptions(flags string) (regexp2.RegexOptions, error) {
-	options := regexp2.RegexOptions(regexp2.RE2)
-	for _, flag := range flags {
-		switch flag {
-		case 'i':
-			options |= regexp2.IgnoreCase
-		default:
-			return regexp2.None, fmt.Errorf("unsupported regexp flag: %c", flag)
-		}
-	}
-
-	return options, nil
-}
-
-func validateRegexp(pattern string) error {
-	escaped := false
-	inClass := false
-	classFirst := false
-
-	for i := 0; i < len(pattern); i++ {
-		ch := pattern[i]
-		if escaped {
-			escaped = false
-			if inClass {
-				classFirst = false
-			}
-			continue
-		}
-		if ch == '\\' {
-			escaped = true
-			continue
-		}
-		if inClass {
-			if ch == '[' && i+1 < len(pattern) && isPOSIXClassMarker(pattern[i+1]) {
-				if end := regexpClassSetEnd(pattern, i); end != -1 {
-					i = end
-					classFirst = false
-				}
-				continue
-			}
-			if ch == ']' {
-				if classFirst {
-					classFirst = false
-					continue
-				}
-				inClass = false
-				continue
-			}
-			classFirst = false
-			continue
-		}
-		if ch == '[' {
-			inClass = true
-			classFirst = true
-			continue
-		}
-
-		if ch == '(' && i+1 < len(pattern) && pattern[i+1] == '?' {
-			if hasRegexpPrefix(pattern, i, "(?#") {
-				end := regexpCommentEnd(pattern, i+3)
-				if end == -1 {
-					return nil
-				}
-				i = end
-				continue
-			}
-			switch {
-			case hasRegexpPrefix(pattern, i, "(?<="):
-				return unsupportedRegexpFeature("lookbehind")
-			case hasRegexpPrefix(pattern, i, "(?<!"):
-				return unsupportedRegexpFeature("nlookbehind")
-			case hasRegexpPrefix(pattern, i, "(?>"):
-				return unsupportedRegexpFeature("atomic")
-			case hasRegexpPrefix(pattern, i, "(?<"):
-				return unsupportedRegexpFeature("named_ab")
-			case hasRegexpPrefix(pattern, i, "(?P<"):
-				return unsupportedRegexpFeature("named_ab")
-			case hasRegexpPrefix(pattern, i, "(?'"):
-				return unsupportedRegexpFeature("named_sq")
-			case hasRegexpPrefix(pattern, i, "(?("):
-				return unsupportedRegexpFeature("condition_open")
-			}
-		}
-
-		if i+1 < len(pattern) && pattern[i+1] == '+' {
-			switch ch {
-			case '?':
-				return unsupportedRegexpFeature("zero_or_one_possessive")
-			case '*':
-				return unsupportedRegexpFeature("zero_or_more_possessive")
-			case '+':
-				return unsupportedRegexpFeature("one_or_more_possessive")
-			case '}':
-				if isBoundedRegexpQuantifierEnd(pattern, i) {
-					return unsupportedRegexpFeature("bounded_possessive")
-				}
-			}
-		}
-	}
-
-	return nil
-}
-
-func isPOSIXClassMarker(ch byte) bool {
-	return ch == ':' || ch == '.' || ch == '='
-}
-
-func regexpClassSetEnd(pattern string, start int) int {
-	if start+1 >= len(pattern) {
-		return -1
-	}
-	marker := pattern[start+1]
-	for i := start + 2; i+1 < len(pattern); i++ {
-		if pattern[i] == marker && pattern[i+1] == ']' {
-			return i + 1
-		}
-	}
-	return -1
-}
-
-func regexpCommentEnd(pattern string, start int) int {
-	for i := start; i < len(pattern); i++ {
-		if pattern[i] == ')' {
-			return i
-		}
-	}
-	return -1
-}
-
-func isBoundedRegexpQuantifierEnd(pattern string, close int) bool {
-	for open := close - 1; open >= 0; open-- {
-		if pattern[open] != '{' {
-			continue
-		}
-		if isEscapedRegexpByte(pattern, open) {
-			return false
-		}
-		return isRegexpQuantifierBounds(pattern[open+1 : close])
-	}
-	return false
-}
-
-func isEscapedRegexpByte(pattern string, offset int) bool {
-	backslashes := 0
-	for i := offset - 1; i >= 0 && pattern[i] == '\\'; i-- {
-		backslashes++
-	}
-	return backslashes%2 == 1
-}
-
-func isRegexpQuantifierBounds(bounds string) bool {
-	if bounds == "" {
-		return false
-	}
-
-	digitsBeforeComma := 0
-	seenComma := false
-	for i := 0; i < len(bounds); i++ {
-		ch := bounds[i]
-		switch {
-		case ch >= '0' && ch <= '9':
-			if !seenComma {
-				digitsBeforeComma++
-			}
-		case ch == ',' && !seenComma:
-			seenComma = true
-		default:
-			return false
-		}
-	}
-	return digitsBeforeComma != 0
-}
-
-func hasRegexpPrefix(pattern string, offset int, prefix string) bool {
-	return len(pattern)-offset >= len(prefix) && pattern[offset:offset+len(prefix)] == prefix
-}
-
-func unsupportedRegexpFeature(feature string) error {
-	return fmt.Errorf("unsupported regexp feature: %s", feature)
 }
 
 func (p *Parser) parsePrefixExpression() ast.Expression {

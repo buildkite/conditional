@@ -8,6 +8,7 @@ import (
 
 	"github.com/buildkite/conditional/internal/ast"
 	"github.com/buildkite/conditional/internal/lexer"
+	"github.com/buildkite/conditional/internal/regex"
 	"github.com/dlclark/regexp2"
 )
 
@@ -72,8 +73,8 @@ func TestRegexpExpression(t *testing.T) {
 		t.Errorf("regexp.TokenLiteral not %s. got=%s", `^llamas?`,
 			literal.TokenLiteral())
 	}
-	if literal.Regexp.MatchTimeout != regexpMatchTimeout {
-		t.Errorf("regexp.MatchTimeout not %v. got=%v", regexpMatchTimeout, literal.Regexp.MatchTimeout)
+	if literal.Regexp.MatchTimeout != regex.MatchTimeout {
+		t.Errorf("regexp.MatchTimeout not %v. got=%v", regex.MatchTimeout, literal.Regexp.MatchTimeout)
 	}
 }
 
