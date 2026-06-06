@@ -509,10 +509,6 @@ func pullRequestLabel(ctx Context) *string {
 	if event == nil || *event != "pull_request" {
 		return nil
 	}
-	action := sourceAction(ctx)
-	if action == nil || (*action != "labeled" && *action != "unlabeled") {
-		return nil
-	}
 	return ctx.Build.PullRequest.Label
 }
 
