@@ -126,13 +126,13 @@ func TestConditionalEvaluationSemantics(t *testing.T) {
 			wantError: ErrorKindValidation,
 		},
 		{
-			name:       "documented started failing build state",
-			source:     docsConditionalsSource,
+			name:       "server rejects pipeline transition value as build state",
+			source:     upstreamBuildModel,
 			expression: `build.state == "started_failing"`,
 			ctx: Context{
 				Build: Build{State: str("started_failing")},
 			},
-			want: true,
+			wantError: ErrorKindValidation,
 		},
 		{
 			name:       "documented started build state",

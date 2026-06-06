@@ -10,10 +10,12 @@ const (
 	upstreamConditionalGrammar      = "buildkite/buildkite:app/models/conditional/grammar.kpeg"
 	upstreamConditionalVariableSpec = "buildkite/buildkite:spec/models/conditional/variable_spec.rb"
 	upstreamBuildPipelineEnvModel   = "buildkite/buildkite:app/models/build/pipeline_environment.rb"
+	upstreamBuildModel              = "buildkite/buildkite:app/models/build.rb"
 	upstreamBuildConditionSpec      = "buildkite/buildkite:spec/models/build/condition_spec.rb"
 	upstreamBuildValidatorSpec      = "buildkite/buildkite:spec/validators/build_condition_validator_spec.rb"
 	upstreamBuildNotificationSpec   = "buildkite/buildkite:spec/models/build/notification_spec.rb"
 	upstreamStepNotificationSpec    = "buildkite/buildkite:spec/models/step/notification_spec.rb"
+	upstreamStepStateMachineModel   = "buildkite/buildkite:app/models/step/state_machine.rb"
 	upstreamConditionalRegexpModel  = "buildkite/buildkite:app/models/conditional/regexp.rb"
 )
 

@@ -636,6 +636,26 @@ func TestBuildkiteEntrypoints(t *testing.T) {
 			want: true,
 		},
 		{
+			name:       "step notification accepts waiting for input state",
+			source:     upstreamStepStateMachineModel,
+			expression: `step.state == "waiting_for_input"`,
+			ctx: Context{
+				EntryPoint: EntryPointStepNotification,
+				Step:       &Step{State: str("waiting_for_input")},
+			},
+			want: true,
+		},
+		{
+			name:       "step notification accepts canceled state",
+			source:     upstreamStepStateMachineModel,
+			expression: `step.state == "canceled"`,
+			ctx: Context{
+				EntryPoint: EntryPointStepNotification,
+				Step:       &Step{State: str("canceled")},
+			},
+			want: true,
+		},
+		{
 			name:       "build condition with step can use step variables",
 			source:     upstreamBuildConditionSpec,
 			expression: `step.key == "deploy"`,

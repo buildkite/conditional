@@ -297,6 +297,10 @@ values. For example, `Pipeline.Name` feeds
 `build.env("BUILDKITE_PIPELINE_NAME")`, but `pipeline.name` is not a server
 conditional variable and must fail validation.
 
+Enum validation follows the server enum definitions when the public docs differ.
+For example, `pipeline.started_failing` is a boolean conditional variable, but
+`started_failing` is not a `Build::State` value in `Build::Condition`.
+
 Environment merge behavior is part of the public contract:
 
 - `ProjectEnv` and `BuildEnv` are merged using server-compatible precedence.
@@ -873,6 +877,9 @@ Current Slice 5 progress:
 - `pipeline.name` has been removed from the conditional variable surface
   because `Build::Condition` does not assign it; `Pipeline.Name` remains as
   caller-provided data for `BUILDKITE_PIPELINE_NAME`.
+- `build.state` and `step.state` enum validation now tracks the server enum
+  models for current drift: `build.state` rejects `started_failing`, while
+  `step.state` accepts `waiting_for_input` and `canceled`.
 - `BUILDKITE_GIT_DIFF_BASE` is gated by explicit merge-queue build state, then
   uses either the merge queue base branch or base commit according to the
   pipeline provider setting.
