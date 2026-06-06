@@ -204,11 +204,13 @@ type Build struct {
 	Commit       *string
 	Number       *int
 
-	Creator     Actor
-	Author      Actor
-	SCM         SCM
-	PullRequest PullRequest
-	MergeQueue  MergeQueue
+	Creator       Actor
+	Author        Actor
+	SCM           SCM
+	PullRequest   PullRequest
+	MergeQueue    MergeQueue
+	TriggeredFrom TriggeredFrom
+	RebuiltFrom   RebuiltFrom
 }
 
 type Actor struct {
@@ -220,14 +222,15 @@ type Actor struct {
 }
 
 type Pipeline struct {
-	ID                      *string
-	Name                    *string
-	Slug                    *string
-	DefaultBranch           *string
-	Repository              *string
-	StartedPassing          *bool
-	StartedFailing          *bool
-	NextFinishedBuildExists *bool
+	ID                                    *string
+	Name                                  *string
+	Slug                                  *string
+	DefaultBranch                         *string
+	Repository                            *string
+	StartedPassing                        *bool
+	StartedFailing                        *bool
+	NextFinishedBuildExists               *bool
+	UseMergeQueueBaseCommitForGitDiffBase *bool
 }
 
 type SCM struct {
@@ -238,18 +241,32 @@ type SCM struct {
 }
 
 type PullRequest struct {
-	ID             *string
-	BaseBranch     *string
-	Draft          *bool
-	Label          *string
-	Labels         []string
-	Repository     *string
-	RepositoryFork *bool
+	ID                *string
+	BaseBranch        *string
+	Draft             *bool
+	Label             *string
+	Labels            []string
+	Repository        *string
+	RepositoryFork    *bool
+	UsingMergeRefspec *bool
 }
 
 type MergeQueue struct {
+	Active     bool
 	BaseBranch *string
 	BaseCommit *string
+}
+
+type TriggeredFrom struct {
+	BuildID      *string
+	BuildNumber  *int
+	PipelineSlug *string
+	JobID        *string
+}
+
+type RebuiltFrom struct {
+	BuildID     *string
+	BuildNumber *int
 }
 
 type Organization struct {
@@ -343,9 +360,9 @@ Initial manifest:
 
 | Upstream source | Groups to account for | Current status | Required status before parity claim |
 | --- | --- | --- | --- |
-| `spec/models/conditional/parser_spec.rb` | friendly errors, comments, objects/properties, function calls, complex strings, simple expressions, operand precedence, negation, token positions | `blocked`: Slice 3 ports flat dotted identifiers/functions, ternary precedence, shell expansion operands, malformed dotted-name rejection, and parser-level rejection of `@>`; Slice 4 ports server string escape decoding for single-quoted and double-quoted strings plus quote-aware shell fallback scanning. Exact friendly messages and token positions remain follow-up parser work | `ported` or `intentionally_excluded` with reason |
-| `spec/models/conditional/evaluator_spec.rb` | booleans, nulls, arrays, regexes, string comparisons, ternaries, variables/enums, shell substitutions | `blocked`: Slice 4 ports regex includes, null regex/includes semantics, shell substitution evaluation, double-quoted interpolation, server string escapes, shell fallback string grammar, enum literal validation, logical type-checking before runtime short-circuiting, enum comparison asymmetry, array equality/null comparisons, Ruby-style falsey runtime behavior for typed nil booleans, and representative type-checker rejection cases. Full custom function/lazy variable coverage remains | `ported` |
-| `spec/models/conditional/variable_spec.rb` | typed variables, nullable typed values, enums, lazy values | `blocked`: Slice 4 ports the server's declared-type behavior for nil values: typed nil strings, booleans, arrays, and enums type-check as their declared type rather than nullable unions. Lazy variable internals and exhaustive variable specs remain Slice 5/cleanup work | `ported` or `superseded` by Go type/context tests |
+| `spec/models/conditional/parser_spec.rb` | friendly errors, comments, objects/properties, function calls, complex strings, simple expressions, operand precedence, negation, token positions | `blocked`: Slice 3 ports flat dotted identifiers/functions, ternary precedence, shell expansion operands, malformed dotted-name rejection, and parser-level rejection of `@>`; Slice 4 ports server string escape decoding for single-quoted and double-quoted strings plus quote-aware shell fallback scanning. Generic custom test functions are superseded by concrete Buildkite functions in the root API. Exact friendly messages and token positions remain follow-up parser work | `ported` or `intentionally_excluded` with reason |
+| `spec/models/conditional/evaluator_spec.rb` | booleans, nulls, arrays, regexes, string comparisons, ternaries, variables/enums, shell substitutions | `blocked`: Slice 4 ports regex includes, null regex/includes semantics, shell substitution evaluation, double-quoted interpolation, server string escapes, shell fallback string grammar, enum literal validation, logical type-checking before runtime short-circuiting, enum comparison asymmetry, array equality/null comparisons, Ruby-style falsey runtime behavior for typed nil booleans, and representative type-checker rejection cases. Generic custom test functions are superseded by the root API's concrete `env` and `build.env` functions | `ported` |
+| `spec/models/conditional/variable_spec.rb` | typed variables, nullable typed values, enums, lazy values | `blocked`: Slice 4 ports the server's declared-type behavior for nil values: typed nil strings, booleans, arrays, and enums type-check as their declared type rather than nullable unions. The Ruby lazy-variable API is superseded by Go context fields and derived helpers; exhaustive field coverage remains Slice 5 work | `ported` or `superseded` by Go type/context tests |
 | `spec/models/build/condition_spec.rb` | `env()`, `build.env()`, build/pipeline/org fields, webhook fields, pull request label, project env merge, validation, context construction | `blocked`: Slice 2 seeds source-tagged root cases for representative `env()`, `build.env()`, organization, pipeline, webhook, pull request label, project env merge, and validation behavior; the exhaustive context matrix is Slice 5 | `ported` |
 | `spec/validators/build_condition_validator_spec.rb` | blank/nil validation, invalid conditionals, step-variable validation option | `blocked`: Slice 2 ports blank string, invalid expression, step-variable rejection, and step-option acceptance through root validation; nil validation is not representable in the string API | `ported` or `intentionally_excluded` with reason |
 | `spec/models/build/notification_spec.rb` | no conditional, false on unmet condition, false on parser/evaluation errors | `blocked`: Slice 2 ports blank/no-condition equivalent, false-on-unmet condition, false-on-parse-error, and false-on-unavailable-step-variable behavior; full notification parsing/config propagation remains out of scope | `ported` |
@@ -401,13 +418,17 @@ from this plan.
   and `BUILDKITE_*` allowlist checks after interpolation, so dynamic names fail
   closed the same way static literal names do.
 - Some landed behavior is still explicitly provisional because it diverges from
-  the server regex validator or still lacks exhaustive custom function/lazy
-  variable coverage.
+  the server regex validator or still lacks the exhaustive Buildkite context
+  matrix.
 
 ### Active Slice
 
-- Slice 4 is aligning type checking and evaluator semantics with the server
-  evaluator.
+- Slice 5 is now filling out the Buildkite context and `env()` matrix after the
+  Slice 4 public-surface audit. Generic Ruby custom functions and lazy-variable
+  wrappers are not a public Go API; concrete Buildkite functions, typed context
+  fields, and derived helpers are the parity target.
+- Slice 4 aligned type checking and evaluator semantics with the server
+  evaluator for the public Buildkite surface:
 - Root `Validate` now uses server-style type checking instead of evaluating the
   expression just to prove it returns a boolean. Unknown variables/functions,
   wrong arity, incompatible operators, invalid `env()` argument types, enum
@@ -435,6 +456,10 @@ from this plan.
   dynamic `BUILDKITE_*` names during evaluation. Notification entrypoints still
   convert those evaluation errors to `false`, matching the server deliverability
   paths.
+- The built-in environment matrix now covers triggered-from build/job values,
+  rebuilt-from values, pull request merge-refspec state, and merge-queue
+  `BUILDKITE_GIT_DIFF_BASE` behavior, including the server's blank-string
+  defaults for supported built-in keys.
 - Server-supported cases that the current implementation cannot pass are not
   added as skipped tests. They remain recorded in the manifest and known gaps
   until the parser, evaluator, context, and regex parity slices implement them.
@@ -449,14 +474,14 @@ from this plan.
 | Dotted names | Parser and evaluator internals now use flat dotted identifiers for server variables. Some public implementation packages still expose older generic-language concepts during transition. | Finish removing nested object lookup assumptions and move implementation packages under `internal/` in the cleanup slice. |
 | `build.env()` | `build.env("NAME")` parses as a flat function identifier, type-checks with the server's string return token type, evaluates to `null` for absent variables, and fails closed for blank or unsupported dynamic `BUILDKITE_*` names. | Expand validator and conformance coverage for the full server env matrix in Slice 5. |
 | Ternary syntax | Ternaries parse with server precedence, evaluate lazily, use Ruby truthiness for nil runtime conditions, and type-check branch compatibility without local nullable-union narrowing. | Expand conformance coverage for every upstream ternary type-checker case before marking Slice 4 complete. |
-| Shell substitution | Shell expansion operands, double-quoted interpolation, server string escapes, and quoted fallback strings evaluate for the upstream set/unset/empty/default/alternate/required/substring matrix and representative fallback grammar cases. | Finish custom function/lazy variable coverage and expand the upstream parser/evaluator matrix until every shell substitution group is accounted for. |
+| Shell substitution | Shell expansion operands, double-quoted interpolation, server string escapes, and quoted fallback strings evaluate for the upstream set/unset/empty/default/alternate/required/substring matrix and representative fallback grammar cases. | Run a final upstream parser/evaluator audit before marking every shell substitution group accounted for. |
 | Scope | Callers pass arbitrary `object.Struct`. | Add server-style Buildkite assignment tables with documented variables and context availability. |
 | Nullable values | Documented nullable Buildkite assignments are present as runtime `null` while keeping their server-declared type for validation. Truly unknown variables still fail closed. | Finish the exhaustive context matrix and lazy variable coverage so every documented nullable field is covered in every entrypoint. |
 | Context restrictions | No context kind. | Enforce pipeline, step, build-notification, and step-notification variable availability. |
 | Final result | Root `Validate`/`Evaluate` now type-check for a boolean final result; lower-level `Eval` still returns any `object.Object` during transition. | Move implementation packages under `internal/` and keep root `(bool, error)` as the supported Buildkite surface. |
 | Regex syntax | regexp2 accepts some features the server rejects. | Keep regexp2 only with a server-compatible validator for flags and unsupported constructs. |
 | Divergent operators | `@>` no longer tokenizes as a Buildkite parser operator. Some lower-level compatibility constants may remain until cleanup. | Remove remaining dead `@>` constants or generic-language artifacts in the cleanup slice. |
-| Type mismatch semantics | Core equality, regex matching, `includes`, `!`, logical, ternary, enum, null, and array comparison cases now use server-derived type-checking behavior. | Finish the remaining server-derived matrix for custom functions, lazy variables, function argument validators, and exact error categories. |
+| Type mismatch semantics | Core equality, regex matching, `includes`, `!`, logical, ternary, enum, null, array comparison, and concrete Buildkite function cases now use server-derived type-checking behavior. | Finish exact error category coverage and the remaining context-driven function cases. |
 | Conformance | Root package tests are now split into source-tagged table-driven files for syntax, evaluation, regex, context, and root API error behavior. The tables seed docs and upstream spec coverage but do not yet port every blocked upstream group. | Expand the tables in each implementation slice until every manifest group is `ported`, `superseded`, or `intentionally_excluded` before claiming parity. |
 
 ## Server Syntax And Context Surface To Cover
@@ -798,10 +823,11 @@ Current Slice 4 progress:
   interpolation: blank names and unsupported `BUILDKITE_*` names produce
   evaluation errors for build conditions and `false` for notification
   deliverability checks, while dynamic custom names remain runtime lookups.
-- Remaining Slice 4 work before marking the slice landed: broader upstream
-  type-checker cases for custom functions and lazy variables, plus a final pass
-  over the upstream evaluator/parser groups to ensure no substitution grammar
-  cases are unaccounted for.
+- Remaining Slice 4 audit before marking the slice landed: a final pass over the
+  upstream evaluator/parser groups to ensure no substitution grammar or public
+  Buildkite type-checker cases are unaccounted for. Generic Ruby-only custom
+  function and lazy-variable wrapper specs are superseded by the root Go API's
+  concrete function and context model.
 
 ### Slice 5: Buildkite Context And `env()` Semantics
 
@@ -832,6 +858,19 @@ Definition of done:
   webhook behavior matches upstream tests.
 - Verified-user-sensitive values and visible team lists are represented in the
   caller-provided context model without hard-coding server database behavior.
+
+Current Slice 5 progress:
+
+- Built-in `BUILDKITE_*` values are derived for branch, tag, message, commit,
+  pipeline, organization, pull request, merge queue, triggered-from,
+  rebuilt-from, pull request labels and merge-refspec state, and merge-queue
+  git-diff-base fields.
+- `BUILDKITE_GIT_DIFF_BASE` is gated by explicit merge-queue build state, then
+  uses either the merge queue base branch or base commit according to the
+  pipeline provider setting.
+- Covered built-in environment keys whose server fallback is a blank string now
+  materialize as `""` through `build.env()` instead of `null`, matching
+  `Build::PipelineEnvironment#[]`.
 
 ### Slice 6: Regex Exact Parity
 
