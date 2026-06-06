@@ -439,9 +439,9 @@ from this plan.
   accepted those names; the new table tests make that contract durable for both
   `env()` and `build.env()`, including GitHub deployment, check-run, comment,
   release, and review variables supplied through `BuildEnv`.
-- Slice 8, the optional server oracle, remains the only planned delivery slice
-  that has not landed. It should stay optional unless the team has reliable
-  server-backed fixtures and credentials for a non-CI conformance command.
+- Slice 8 has landed as an optional oracle command. Default CI still runs only
+  deterministic Go tests; server-backed comparison is available through
+  `mise run conformance:check` when `CONDITIONAL_ORACLE_COMMAND` is configured.
 
 ### Known Gaps
 
@@ -1001,6 +1001,24 @@ Definition of done:
 - If a live oracle is not available, the plan records exactly which semantics
   remain inferred from docs rather than server-proven.
 
+Current Slice 8 progress:
+
+- `internal/conformance` now contains a source-tagged conformance corpus that is
+  exercised locally by Go tests and by the optional command.
+- `go run ./cmd/conditional conformance` verifies the local corpus and reports
+  that no server oracle is configured.
+- `go run ./cmd/conditional conformance --list` writes the oracle request shape
+  as JSON lines.
+- `go run ./cmd/conditional conformance --oracle-command ./server-oracle`
+  streams each case to an external server-backed command and reports mismatches.
+- `mise run conformance:check` is available for local use, but it remains
+  separate from the default `mise run check` path.
+- A live server oracle command is still an optional private wrapper because this
+  public repo should not own Buildkite credentials, server fixtures, or network
+  calls in deterministic tests.
+
+Status: landed.
+
 ## Verification
 
 Run on every implementation slice:
@@ -1078,8 +1096,9 @@ Add these targeted checks as the plan lands:
 
 ## Deferred Work
 
-- Optional live server oracle. Ported upstream specs should carry the first
-  several implementation slices.
+- A private server-backed oracle command can be added wherever Buildkite
+  credentials and fixtures live. The public repo now has the command protocol
+  and committed corpus needed to run it.
 - Byte-for-byte error text if the first release can provide stable typed errors,
   source locations, and exact accept/reject behavior.
 
