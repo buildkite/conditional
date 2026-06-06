@@ -2,7 +2,6 @@ package evaluator
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/buildkite/conditional/internal/ast"
 	"github.com/buildkite/conditional/internal/object"
@@ -358,30 +357,6 @@ func resolveScopedName(name string, scope Scope) (object.Object, bool) {
 	if val, ok := scope.Get(name); ok {
 		return val, true
 	}
-
-	if !strings.Contains(name, ".") {
-		return nil, false
-	}
-
-	var current Scope = scope
-	parts := strings.Split(name, ".")
-	for i, part := range parts {
-		val, ok := current.Get(part)
-		if !ok {
-			return nil, false
-		}
-
-		if i == len(parts)-1 {
-			return val, true
-		}
-
-		next, ok := val.(Scope)
-		if !ok {
-			return nil, false
-		}
-		current = next
-	}
-
 	return nil, false
 }
 

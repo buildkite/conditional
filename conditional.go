@@ -220,18 +220,11 @@ func buildScope(ctx Context) evaluationScope {
 	env := mergedEnv(ctx)
 
 	scope := object.Struct{
-		"env":          envFunction(env),
-		"build.env":    nullableEnvFunction(env),
-		"build":        buildObject(ctx),
-		"pipeline":     pipelineObject(ctx.Pipeline),
-		"organization": organizationObject(ctx.Organization),
+		"env":       envFunction(env),
+		"build.env": nullableEnvFunction(env),
 	}
 	for key, value := range flatAssignments(ctx) {
 		scope[key] = value
-	}
-
-	if stepAllowed(ctx.EntryPoint) {
-		scope["step"] = stepObject(ctx.Step)
 	}
 
 	return evaluationScope{Struct: scope, env: env}
@@ -329,125 +322,24 @@ func flatAssignments(ctx Context) object.Struct {
 	}
 
 	if stepAllowed(ctx.EntryPoint) {
-		step := stepObject(ctx.Step)
-		assignments["step.id"] = step["id"]
-		assignments["step.key"] = step["key"]
-		assignments["step.type"] = step["type"]
-		assignments["step.label"] = step["label"]
-		assignments["step.state"] = step["state"]
-		assignments["step.outcome"] = step["outcome"]
+		if ctx.Step == nil {
+			assignments["step.id"] = &object.Null{}
+			assignments["step.key"] = &object.Null{}
+			assignments["step.type"] = &object.Null{}
+			assignments["step.label"] = &object.Null{}
+			assignments["step.state"] = &object.Null{}
+			assignments["step.outcome"] = &object.Null{}
+		} else {
+			assignments["step.id"] = stringValue(ctx.Step.ID)
+			assignments["step.key"] = stringValue(ctx.Step.Key)
+			assignments["step.type"] = stringValue(ctx.Step.Type)
+			assignments["step.label"] = stringValue(ctx.Step.Label)
+			assignments["step.state"] = stringValue(ctx.Step.State)
+			assignments["step.outcome"] = stringValue(ctx.Step.Outcome)
+		}
 	}
 
 	return assignments
-}
-
-func buildObject(ctx Context) object.Struct {
-	build := ctx.Build
-	return object.Struct{
-		"id":            stringValue(build.ID),
-		"state":         stringValue(build.State),
-		"fixed":         boolValue(build.Fixed),
-		"blocked_state": stringValue(build.BlockedState),
-		"source":        stringValue(build.Source),
-		"source_event":  stringValue(sourceEvent(ctx)),
-		"source_action": stringValue(sourceAction(ctx)),
-		"branch":        stringValue(build.Branch),
-		"tag":           presenceStringValue(build.Tag),
-		"message":       presenceStringValue(build.Message),
-		"commit":        stringValue(build.Commit),
-		"number":        intValue(build.Number),
-		"creator":       actorObject(build.Creator, actorOptions{includeVerified: true}),
-		"author":        actorObject(build.Author, actorOptions{presenceNameEmail: true}),
-		"scm": object.Struct{
-			"author": object.Struct{
-				"name":  stringValue(build.SCM.AuthorName),
-				"email": stringValue(build.SCM.AuthorEmail),
-			},
-			"committer": object.Struct{
-				"name":  stringValue(build.SCM.CommitterName),
-				"email": stringValue(build.SCM.CommitterEmail),
-			},
-		},
-		"pull_request": object.Struct{
-			"id":          stringValue(build.PullRequest.ID),
-			"base_branch": stringValue(build.PullRequest.BaseBranch),
-			"draft":       boolValue(build.PullRequest.Draft),
-			"label":       stringValue(pullRequestLabel(ctx)),
-			"labels":      stringArrayValue(build.PullRequest.Labels),
-			"repository": object.Struct{
-				"fork": boolValue(build.PullRequest.RepositoryFork),
-			},
-		},
-		"merge_queue": object.Struct{
-			"base_branch": stringValue(build.MergeQueue.BaseBranch),
-			"base_commit": stringValue(build.MergeQueue.BaseCommit),
-		},
-	}
-}
-
-type actorOptions struct {
-	includeVerified   bool
-	presenceNameEmail bool
-}
-
-func actorObject(actor Actor, options actorOptions) object.Struct {
-	name := stringValue(actor.Name)
-	email := stringValue(actor.Email)
-	if options.presenceNameEmail {
-		name = presenceStringValue(actor.Name)
-		email = presenceStringValue(actor.Email)
-	}
-
-	out := object.Struct{
-		"id":    stringValue(actor.ID),
-		"name":  name,
-		"email": email,
-		"teams": stringArrayValue(actor.Teams),
-	}
-	if options.includeVerified {
-		out["verified"] = boolValue(actor.Verified)
-	}
-	return out
-}
-
-func pipelineObject(pipeline Pipeline) object.Struct {
-	return object.Struct{
-		"id":                         stringValue(pipeline.ID),
-		"slug":                       stringValue(pipeline.Slug),
-		"default_branch":             presenceStringValue(pipeline.DefaultBranch),
-		"repository":                 presenceStringValue(pipeline.Repository),
-		"started_passing":            boolValue(pipeline.StartedPassing),
-		"started_failing":            boolValue(pipeline.StartedFailing),
-		"next_finished_build_exists": boolValue(pipeline.NextFinishedBuildExists),
-	}
-}
-
-func organizationObject(organization Organization) object.Struct {
-	return object.Struct{
-		"id":   stringValue(organization.ID),
-		"slug": stringValue(organization.Slug),
-	}
-}
-
-func stepObject(step *Step) object.Struct {
-	if step == nil {
-		return object.Struct{
-			"id":      &object.Null{},
-			"key":     &object.Null{},
-			"type":    &object.Null{},
-			"label":   &object.Null{},
-			"state":   &object.Null{},
-			"outcome": &object.Null{},
-		}
-	}
-	return object.Struct{
-		"id":      stringValue(step.ID),
-		"key":     stringValue(step.Key),
-		"type":    stringValue(step.Type),
-		"label":   stringValue(step.Label),
-		"state":   stringValue(step.State),
-		"outcome": stringValue(step.Outcome),
-	}
 }
 
 func sourceEvent(ctx Context) *string {
