@@ -1,6 +1,9 @@
 package conditional
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 const (
 	docsConditionalsSource = "https://buildkite.com/docs/pipelines/configure/conditionals"
@@ -17,6 +20,7 @@ const (
 	upstreamStepNotificationSpec    = "buildkite/buildkite:spec/models/step/notification_spec.rb"
 	upstreamStepStateMachineModel   = "buildkite/buildkite:app/models/step/state_machine.rb"
 	upstreamConditionalRegexpModel  = "buildkite/buildkite:app/models/conditional/regexp.rb"
+	upstreamBuildkiteSuggestion     = "buildkite/buildkite:lib/buildkite/suggestion.rb"
 )
 
 type evaluateCase struct {
@@ -29,11 +33,12 @@ type evaluateCase struct {
 }
 
 type validateCase struct {
-	name       string
-	source     string
-	expression string
-	ctx        Context
-	wantError  ErrorKind
+	name                string
+	source              string
+	expression          string
+	ctx                 Context
+	wantError           ErrorKind
+	wantMessageContains []string
 }
 
 func runEvaluateCases(t *testing.T, tests []evaluateCase) {
@@ -71,6 +76,11 @@ func runValidateCases(t *testing.T, tests []validateCase) {
 			if tt.wantError != "" {
 				if !IsErrorKind(err, tt.wantError) {
 					t.Fatalf("Validate(%q) error = %v, want %s", tt.expression, err, tt.wantError)
+				}
+				for _, want := range tt.wantMessageContains {
+					if !strings.Contains(err.Error(), want) {
+						t.Fatalf("Validate(%q) error = %v, want message containing %q", tt.expression, err, want)
+					}
 				}
 				return
 			}
