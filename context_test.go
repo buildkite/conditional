@@ -442,6 +442,59 @@ func TestBuildkiteContextNullAssignmentMatrix(t *testing.T) {
 	runEvaluateCases(t, tests)
 }
 
+func TestBuildkiteContextPresenceAssignmentMatrix(t *testing.T) {
+	tests := []evaluateCase{
+		{
+			name:   "blank tag and message are null",
+			source: upstreamBuildConditionSpec,
+			expression: `build.tag == null && build.message == null &&
+				build.branch == " " && build.commit == ""`,
+			ctx: Context{
+				EntryPoint: EntryPointBuildCondition,
+				Build: Build{
+					Tag:     str(" \t "),
+					Message: str(""),
+					Branch:  str(" "),
+					Commit:  str(""),
+				},
+			},
+			want: true,
+		},
+		{
+			name:       "empty authored by name and email are null",
+			source:     upstreamBuildConditionSpec,
+			expression: `build.author.name == null && build.author.email == null`,
+			ctx: Context{
+				EntryPoint: EntryPointBuildCondition,
+				Build: Build{
+					Author: Actor{
+						Name:  str(""),
+						Email: str(""),
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name:   "blank pipeline default branch and repository are null",
+			source: upstreamBuildConditionSpec,
+			expression: `pipeline.default_branch == null && pipeline.repository == null &&
+				pipeline.slug == " "`,
+			ctx: Context{
+				EntryPoint: EntryPointBuildCondition,
+				Pipeline: Pipeline{
+					DefaultBranch: str(""),
+					Repository:    str("\t"),
+					Slug:          str(" "),
+				},
+			},
+			want: true,
+		},
+	}
+
+	runEvaluateCases(t, tests)
+}
+
 func TestBuildkiteActorContextAssignments(t *testing.T) {
 	tests := []evaluateCase{
 		{

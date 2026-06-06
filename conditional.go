@@ -329,8 +329,8 @@ func flatAssignments(ctx Context) object.Struct {
 		"build.source_event":                 stringValue(sourceEvent(ctx)),
 		"build.source_action":                stringValue(sourceAction(ctx)),
 		"build.branch":                       stringValue(build.Branch),
-		"build.tag":                          stringValue(build.Tag),
-		"build.message":                      stringValue(build.Message),
+		"build.tag":                          presenceStringValue(build.Tag),
+		"build.message":                      presenceStringValue(build.Message),
 		"build.commit":                       stringValue(build.Commit),
 		"build.number":                       intValue(build.Number),
 		"build.creator.id":                   stringValue(build.Creator.ID),
@@ -339,8 +339,8 @@ func flatAssignments(ctx Context) object.Struct {
 		"build.creator.teams":                stringArrayValue(build.Creator.Teams),
 		"build.creator.verified":             boolValue(build.Creator.Verified),
 		"build.author.id":                    stringValue(build.Author.ID),
-		"build.author.name":                  stringValue(build.Author.Name),
-		"build.author.email":                 stringValue(build.Author.Email),
+		"build.author.name":                  presenceStringValue(build.Author.Name),
+		"build.author.email":                 presenceStringValue(build.Author.Email),
 		"build.author.teams":                 stringArrayValue(build.Author.Teams),
 		"build.scm.author.name":              stringValue(build.SCM.AuthorName),
 		"build.scm.author.email":             stringValue(build.SCM.AuthorEmail),
@@ -357,8 +357,8 @@ func flatAssignments(ctx Context) object.Struct {
 		"build.merge_queue.base_commit":      stringValue(build.MergeQueue.BaseCommit),
 		"pipeline.id":                        stringValue(ctx.Pipeline.ID),
 		"pipeline.slug":                      stringValue(ctx.Pipeline.Slug),
-		"pipeline.default_branch":            stringValue(ctx.Pipeline.DefaultBranch),
-		"pipeline.repository":                stringValue(ctx.Pipeline.Repository),
+		"pipeline.default_branch":            presenceStringValue(ctx.Pipeline.DefaultBranch),
+		"pipeline.repository":                presenceStringValue(ctx.Pipeline.Repository),
 		// Upstream Build::Condition exposes these in its base assignment table,
 		// even though the public docs describe them as notification variables.
 		"pipeline.started_passing":            boolValue(ctx.Pipeline.StartedPassing),
@@ -392,12 +392,12 @@ func buildObject(ctx Context) object.Struct {
 		"source_event":  stringValue(sourceEvent(ctx)),
 		"source_action": stringValue(sourceAction(ctx)),
 		"branch":        stringValue(build.Branch),
-		"tag":           stringValue(build.Tag),
-		"message":       stringValue(build.Message),
+		"tag":           presenceStringValue(build.Tag),
+		"message":       presenceStringValue(build.Message),
 		"commit":        stringValue(build.Commit),
 		"number":        intValue(build.Number),
-		"creator":       actorObject(build.Creator, true),
-		"author":        actorObject(build.Author, false),
+		"creator":       actorObject(build.Creator, actorOptions{includeVerified: true}),
+		"author":        actorObject(build.Author, actorOptions{presenceNameEmail: true}),
 		"scm": object.Struct{
 			"author": object.Struct{
 				"name":  stringValue(build.SCM.AuthorName),
@@ -425,14 +425,26 @@ func buildObject(ctx Context) object.Struct {
 	}
 }
 
-func actorObject(actor Actor, includeVerified bool) object.Struct {
+type actorOptions struct {
+	includeVerified   bool
+	presenceNameEmail bool
+}
+
+func actorObject(actor Actor, options actorOptions) object.Struct {
+	name := stringValue(actor.Name)
+	email := stringValue(actor.Email)
+	if options.presenceNameEmail {
+		name = presenceStringValue(actor.Name)
+		email = presenceStringValue(actor.Email)
+	}
+
 	out := object.Struct{
 		"id":    stringValue(actor.ID),
-		"name":  stringValue(actor.Name),
-		"email": stringValue(actor.Email),
+		"name":  name,
+		"email": email,
 		"teams": stringArrayValue(actor.Teams),
 	}
-	if includeVerified {
+	if options.includeVerified {
 		out["verified"] = boolValue(actor.Verified)
 	}
 	return out
@@ -442,8 +454,8 @@ func pipelineObject(pipeline Pipeline) object.Struct {
 	return object.Struct{
 		"id":                         stringValue(pipeline.ID),
 		"slug":                       stringValue(pipeline.Slug),
-		"default_branch":             stringValue(pipeline.DefaultBranch),
-		"repository":                 stringValue(pipeline.Repository),
+		"default_branch":             presenceStringValue(pipeline.DefaultBranch),
+		"repository":                 presenceStringValue(pipeline.Repository),
 		"started_passing":            boolValue(pipeline.StartedPassing),
 		"started_failing":            boolValue(pipeline.StartedFailing),
 		"next_finished_build_exists": boolValue(pipeline.NextFinishedBuildExists),
@@ -636,6 +648,13 @@ func isNotificationEntryPoint(entryPoint EntryPoint) bool {
 
 func stringValue(value *string) object.Object {
 	if value == nil {
+		return &object.Null{}
+	}
+	return &object.String{Value: *value}
+}
+
+func presenceStringValue(value *string) object.Object {
+	if value == nil || strings.TrimSpace(*value) == "" {
 		return &object.Null{}
 	}
 	return &object.String{Value: *value}
