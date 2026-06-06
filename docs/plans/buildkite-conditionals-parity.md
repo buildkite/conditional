@@ -31,8 +31,8 @@ missing values, context-specific variables, type mismatches, dotted identifier
 behavior, shell-style environment substitution, and server-rejected regular
 expression features. The upstream `buildkite/buildkite` repo already has RSpec
 coverage for much of this behavior. This plan therefore treats source-tagged
-table-driven Go conformance tests, an upstream manifest, and an optional server
-oracle as first-class deliverables, not test polish after implementation.
+table-driven Go conformance tests and an upstream manifest as first-class
+deliverables, not test polish after implementation.
 
 ## Problem
 
@@ -109,8 +109,8 @@ important gaps the delivery slices addressed:
   should implement the server conditional grammar, including the shell-style
   substitution syntax that grammar accepts, but it should not become a YAML
   loader.
-- Do not make live Buildkite API calls in default unit tests. Server oracle tests
-  should be optional and clearly separated from deterministic local tests.
+- Do not make live Buildkite API calls in tests. Parity coverage should stay
+  deterministic and local.
 - Do not preserve divergent syntax for compatibility in the Buildkite evaluator.
   If a feature is not accepted by the server-side conditional language, remove
   it or keep it behind a clearly separate non-Buildkite internal test path until
@@ -321,7 +321,7 @@ Implementation packages should have clear responsibilities:
 Codebase cleanup should push toward idiomatic Go package boundaries:
 
 - Prefer concrete types in the public API. Introduce interfaces only where a
-  consumer needs substitution, such as an optional server-oracle checker.
+  real local consumer needs substitution.
 - Keep parser, evaluator, regex validation, context construction, and
   environment substitution as separate reasons to change.
 - Move implementation-only packages under `internal/` as part of the breaking
@@ -436,9 +436,9 @@ from this plan.
 ### Active Slice
 
 - Slices 1 through 9 have landed. The plan is complete for the public Go
-  expression library surface: remaining work is upstream drift monitoring,
-  optional private oracle expansion, or a separate plan for pipeline YAML
-  notification parsing if this repository ever takes that scope.
+  expression library surface: remaining work is upstream drift monitoring or a
+  separate plan for pipeline YAML notification parsing if this repository ever
+  takes that scope.
 - Slice 9 reconciles the upstream manifest against `buildkite/buildkite`
   `origin/main` at `e3b8a46f315` and adds exact-list test coverage for the
   server's `Build::PipelineEnvironment::SUPPORTED` allowlist. That hardens
@@ -467,7 +467,7 @@ from this plan.
 | Regex syntax | regexp2 is bounded by a match timeout and guarded by a server-compatible validator for flags and unsupported constructs. | Keep the accepted/rejected regex matrix aligned with `Conditional::Regexp` as upstream changes. |
 | Divergent operators | `@>` no longer tokenizes as a Buildkite parser operator, and the dead token/parser/root-validation compatibility artifacts have been removed. | Keep parser/root divergence tests so local-only syntax stays rejected. |
 | Type mismatch semantics | Core equality, regex matching, `includes`, `!`, logical, ternary, enum, null, array comparison, and concrete Buildkite function cases now use server-derived type-checking behavior. | Keep error category coverage stable as upstream adds syntax or variables. Byte-for-byte Ruby messages remain deferred. |
-| Conformance | Root package tests are split into source-tagged table-driven files for syntax, evaluation, regex, context, env allowlists, and root API error behavior. The upstream manifest now accounts for every relevant group as `ported`, `superseded`, or `intentionally_excluded`. | Keep the source-tagged tables and optional oracle corpus in sync with upstream changes. |
+| Conformance | Root package tests are split into source-tagged table-driven files for syntax, evaluation, regex, context, env allowlists, and root API error behavior. The upstream manifest now accounts for every relevant group as `ported`, `superseded`, or `intentionally_excluded`. | Keep the source-tagged local tables in sync with upstream changes. |
 
 ## Server Syntax And Context Surface To Cover
 
@@ -539,13 +539,11 @@ Ruby object model. Apply SOLID principles in idiomatic Go terms:
   explicit assignment/type definitions and conformance tests, not by widening
   the evaluator to accept arbitrary unknown names.
 - Liskov/interface substitution: avoid broad exported interfaces. Where
-  substitution matters, such as an optional server oracle, define the smallest
-  consumer-owned interface.
+  substitution matters, define the smallest consumer-owned interface.
 - Interface segregation: public callers should not need lexer/parser/evaluator
   internals to evaluate a conditional.
 - Dependency inversion: the public evaluator depends on a Buildkite context
-  contract; optional live server checks depend on an oracle interface, not on
-  hard-coded network calls in unit tests.
+  contract, not on hard-coded network calls in unit tests.
 
 Additional Go constraints:
 
@@ -986,48 +984,25 @@ Current Slice 7 progress:
 
 Status: landed.
 
-### Slice 8: Optional Server Oracle
+### Slice 8: Local Conformance Tests
 
-Add a tool for checking table-driven conformance cases against Buildkite server
-behavior.
-
-Possible shape:
-
-```sh
-mise run conformance:check
-```
-
-The oracle should be optional because it may need Buildkite credentials, a test
-pipeline, or private/internal access. Default CI should run committed Go tables
-only.
+Add a focused local test corpus for source-tagged conformance cases that should
+stay easy to extend as parity questions come up.
 
 Definition of done:
 
-- The tool can evaluate the Go conformance cases against the server or a
-  server-backed API and report mismatches.
+- Source-tagged conformance cases run as ordinary Go tests.
+- Cases use the public root API, not parser/evaluator internals.
 - If recording observed server behavior is useful later, add generated output as
   a deliberate follow-up rather than as the default test data format.
-- If a live oracle is not available, the plan records exactly which semantics
-  remain inferred from docs rather than server-proven.
 
 Current Slice 8 progress:
 
-- `internal/conformance` now contains a source-tagged seed oracle corpus that is
-  exercised locally by Go tests and by the optional command.
-- `go run ./cmd/conditional conformance` verifies the local corpus and reports
-  that no server oracle is configured.
-- `go run ./cmd/conditional conformance --list` writes the oracle request shape
-  as JSON lines.
-- `go run ./cmd/conditional conformance --oracle-command ./server-oracle`
-  streams each case to an external server-backed command and reports mismatches.
-- `mise run conformance:check` is available for local use, but it remains
-  separate from the default `mise run check` path.
-- A live server oracle command is still an optional private wrapper because this
-  public repo should not own Buildkite credentials, server fixtures, or network
-  calls in deterministic tests.
-- The oracle corpus is intentionally separate from the broader root unit test
-  tables for now. Future hardening can migrate more of those source-tagged root
-  cases into `internal/conformance` as server-backed coverage grows.
+- `conformance_test.go` contains seed docs and upstream-spec cases.
+- The broader root tests remain the main parity corpus for syntax, evaluation,
+  regex, context, env allowlists, and root API error behavior.
+- `mise run check` is the single local verification path.
+- There is no command protocol or live comparison hook in this public repo.
 
 Status: landed.
 
@@ -1143,11 +1118,6 @@ Add these targeted checks as the plan lands:
 
 ## Deferred Work
 
-- A private server-backed oracle command can be added wherever Buildkite
-  credentials and fixtures live. The public repo now has the command protocol
-  and committed corpus needed to run it.
-- The broader source-tagged root test tables can be migrated into the oracle
-  corpus when the team wants a larger server-backed comparison set.
 - Byte-for-byte error text if the first release can provide stable typed errors,
   source locations, and exact accept/reject behavior.
 

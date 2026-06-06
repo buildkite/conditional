@@ -19,10 +19,6 @@ run = [
 description = "Run all tests"
 run = "go test ./..."
 
-[tasks."conformance:check"]
-description = "Run the optional conformance oracle check"
-run = "go run ./cmd/conditional conformance"
-
 [tasks.lint]
 description = "Run linter"
 run = [
