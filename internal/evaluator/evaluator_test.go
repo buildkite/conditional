@@ -379,7 +379,7 @@ func testEvalWithScope(input string, scope Scope) object.Object {
 	p := parser.New(l)
 	expr := p.Parse()
 	if len(p.Errors()) > 0 {
-		return &object.Error{Message: p.Errors()[0]}
+		return &object.Error{Message: p.Errors()[0].Error()}
 	}
 	return Eval(expr, scope)
 }

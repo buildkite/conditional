@@ -20,7 +20,8 @@ const (
 	ErrorKindResult ErrorKind = "result"
 )
 
-// Error is a typed conditional error.
+// Error is a typed conditional error. Cause contains a lower-level error when
+// one is useful to expose through Unwrap.
 type Error struct {
 	Kind    ErrorKind
 	Message string
