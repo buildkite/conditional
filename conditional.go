@@ -136,17 +136,27 @@ func validateEnvCalls(expr ast.Expression) error {
 				case strings.HasPrefix(arg.Value, "$"):
 					return &Error{
 						Kind:    ErrorKindValidation,
-						Message: "env argument should not include $",
+						Message: envDollarNameMessage(arg.Value),
 					}
 				case !validEnvName(arg.Value):
 					return &Error{
 						Kind:    ErrorKindValidation,
-						Message: "env argument should be an environment variable name",
+						Message: "Argument to `env` should be an environment variable name",
 					}
 				case unsupportedBuildkiteEnv(arg.Value):
+					if suggestion := suggestBuildkiteEnv(arg.Value); suggestion != "" {
+						return &Error{
+							Kind: ErrorKindValidation,
+							Message: fmt.Sprintf(
+								"%q is not a valid environment variable - did you mean %q?",
+								arg.Value,
+								suggestion,
+							),
+						}
+					}
 					return &Error{
 						Kind:    ErrorKindValidation,
-						Message: fmt.Sprintf("%q is not a supported Buildkite environment variable", arg.Value),
+						Message: unsupportedBuildkiteEnvMessage(arg.Value),
 					}
 				}
 			}
@@ -303,7 +313,7 @@ func envNameArg(args []object.Object) (string, *object.Error) {
 		return "", &object.Error{Message: "env argument should be an environment variable name"}
 	}
 	if unsupportedBuildkiteEnv(name.Value) {
-		return "", &object.Error{Message: fmt.Sprintf("interpolation of %q is not supported", name.Value)}
+		return "", &object.Error{Message: unsupportedBuildkiteEnvMessage(name.Value)}
 	}
 	return name.Value, nil
 }
@@ -506,48 +516,6 @@ func pullRequestLabel(ctx Context) *string {
 	return ctx.Build.PullRequest.Label
 }
 
-var supportedBuildkiteEnv = map[string]struct{}{
-	"BUILDKITE_BRANCH":                               {},
-	"BUILDKITE_TAG":                                  {},
-	"BUILDKITE_MESSAGE":                              {},
-	"BUILDKITE_COMMIT":                               {},
-	"BUILDKITE_PIPELINE_SLUG":                        {},
-	"BUILDKITE_PIPELINE_NAME":                        {},
-	"BUILDKITE_PIPELINE_ID":                          {},
-	"BUILDKITE_ORGANIZATION_SLUG":                    {},
-	"BUILDKITE_TRIGGERED_FROM_BUILD_ID":              {},
-	"BUILDKITE_TRIGGERED_FROM_BUILD_NUMBER":          {},
-	"BUILDKITE_TRIGGERED_FROM_BUILD_PIPELINE_SLUG":   {},
-	"BUILDKITE_TRIGGERED_FROM_BUILD_JOB_ID":          {},
-	"BUILDKITE_REBUILT_FROM_BUILD_ID":                {},
-	"BUILDKITE_REBUILT_FROM_BUILD_NUMBER":            {},
-	"BUILDKITE_REPO":                                 {},
-	"BUILDKITE_PULL_REQUEST":                         {},
-	"BUILDKITE_PULL_REQUEST_BASE_BRANCH":             {},
-	"BUILDKITE_PULL_REQUEST_REPO":                    {},
-	"BUILDKITE_PULL_REQUEST_LABELS":                  {},
-	"BUILDKITE_PULL_REQUEST_USING_MERGE_REFSPEC":     {},
-	"BUILDKITE_MERGE_QUEUE_BASE_BRANCH":              {},
-	"BUILDKITE_MERGE_QUEUE_BASE_COMMIT":              {},
-	"BUILDKITE_GIT_DIFF_BASE":                        {},
-	"BUILDKITE_GITHUB_ACTION":                        {},
-	"BUILDKITE_GITHUB_COMMENT_ID":                    {},
-	"BUILDKITE_GITHUB_DEPLOYMENT_ID":                 {},
-	"BUILDKITE_GITHUB_DEPLOYMENT_TASK":               {},
-	"BUILDKITE_GITHUB_DEPLOYMENT_ENVIRONMENT":        {},
-	"BUILDKITE_GITHUB_DEPLOYMENT_PAYLOAD":            {},
-	"BUILDKITE_GITHUB_EVENT":                         {},
-	"BUILDKITE_GITHUB_REVIEW_ID":                     {},
-	"BUILDKITE_GITHUB_CHECK_RUN_CONCLUSION":          {},
-	"BUILDKITE_GITHUB_CHECK_RUN_NAME":                {},
-	"BUILDKITE_GITHUB_DEPLOYMENT_STATUS_ENVIRONMENT": {},
-	"BUILDKITE_GITHUB_DEPLOYMENT_STATUS_STATE":       {},
-	"BUILDKITE_GITHUB_RELEASE_DRAFT":                 {},
-	"BUILDKITE_GITHUB_RELEASE_PRERELEASE":            {},
-	"BUILDKITE_GITHUB_RELEASE_TAG":                   {},
-	"BUILDKITE_GITHUB_REVIEW_STATE":                  {},
-}
-
 func mergedEnv(ctx Context) map[string]string {
 	env := make(map[string]string, len(ctx.ProjectEnv)+len(ctx.BuildEnv)+len(supportedBuildkiteEnv))
 	mergeUserEnv(env, ctx.ProjectEnv)
@@ -565,27 +533,6 @@ func mergeUserEnv(env map[string]string, values map[string]string) {
 		}
 		env[key] = value
 	}
-}
-
-func unsupportedBuildkiteEnv(key string) bool {
-	if !strings.HasPrefix(key, "BUILDKITE_") {
-		return false
-	}
-	_, ok := supportedBuildkiteEnv[key]
-	return !ok
-}
-
-func validEnvName(key string) bool {
-	if key == "" {
-		return false
-	}
-	for _, ch := range key {
-		if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_' {
-			continue
-		}
-		return false
-	}
-	return true
 }
 
 func builtinEnv(ctx Context) map[string]string {

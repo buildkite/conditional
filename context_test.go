@@ -570,10 +570,95 @@ func TestBuildkiteContextValidation(t *testing.T) {
 			expression: `build.env("BUILDKITE_AGENT_ACCESS_TOKEN") == null`,
 			ctx:        Context{EntryPoint: EntryPointBuildCondition},
 			wantError:  ErrorKindValidation,
+			wantMessageContains: []string{
+				`Interpolation of "BUILDKITE_AGENT_ACCESS_TOKEN" is not supported`,
+				`runtime`,
+			},
+		},
+		{
+			name:       "literal Buildkite env typo suggests supported name",
+			source:     upstreamBuildConditionSpec,
+			expression: `env("BUILDKITE_MESSGE") == "blah"`,
+			ctx:        Context{EntryPoint: EntryPointBuildCondition},
+			wantError:  ErrorKindValidation,
+			wantMessageContains: []string{
+				`"BUILDKITE_MESSGE" is not a valid environment variable`,
+				`did you mean "BUILDKITE_MESSAGE"`,
+			},
+		},
+		{
+			name:       "literal build env typo suggests supported name",
+			source:     upstreamBuildConditionSpec,
+			expression: `build.env("BUILDKITE_MESSGE") == null`,
+			ctx:        Context{EntryPoint: EntryPointBuildCondition},
+			wantError:  ErrorKindValidation,
+			wantMessageContains: []string{
+				`"BUILDKITE_MESSGE" is not a valid environment variable`,
+				`did you mean "BUILDKITE_MESSAGE"`,
+			},
+		},
+		{
+			name:       "literal invalid env name uses server invalid name error",
+			source:     upstreamBuildConditionSpec,
+			expression: `env("!") == "blah"`,
+			ctx:        Context{EntryPoint: EntryPointBuildCondition},
+			wantError:  ErrorKindValidation,
+			wantMessageContains: []string{
+				"Argument to `env` should be an environment variable name",
+			},
+		},
+		{
+			name:       "literal env name starting with dollar suggests removing dollars",
+			source:     upstreamBuildConditionSpec,
+			expression: `env("$$BUILDKITE_MESSAGE") == "blah"`,
+			ctx:        Context{EntryPoint: EntryPointBuildCondition},
+			wantError:  ErrorKindValidation,
+			wantMessageContains: []string{
+				"Argument to `env` should not include `$`",
+				"did you mean BUILDKITE_MESSAGE",
+			},
 		},
 	}
 
 	runValidateCases(t, tests)
+}
+
+func TestBuildkiteEnvSuggestions(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "message typo",
+			input: "BUILDKITE_MESSGE",
+			want:  "BUILDKITE_MESSAGE",
+		},
+		{
+			name:  "unsupported build number does not suggest",
+			input: "BUILDKITE_BUILD_NUMBER",
+		},
+		{
+			name:  "github review typo picks first server suggestion",
+			input: "BUILDKITE_GITHUB_REVIE_STATE",
+			want:  "BUILDKITE_GITHUB_REVIEW_STATE",
+		},
+		{
+			name:  "pull request label singular picks labels",
+			input: "BUILDKITE_PULL_REQUEST_LABEL",
+			want:  "BUILDKITE_PULL_REQUEST_LABELS",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			requireCaseSource(t, upstreamBuildkiteSuggestion)
+
+			if got := suggestBuildkiteEnv(tt.input); got != tt.want {
+				t.Fatalf("suggestBuildkiteEnv(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
 }
 
 func TestBuildkiteEntrypoints(t *testing.T) {
