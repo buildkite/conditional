@@ -997,6 +997,8 @@ Current Slice 7 progress:
 - Removed nested dotted lookup fallback from the internal evaluator and root
   scope builder. Buildkite names now resolve through flat assignment keys such
   as `build.message` and `build.env`.
+- Public README and package docs now describe the root API, entrypoints,
+  variable roots, nullable missing values, and fail-closed behavior.
 
 ### Slice 8: Optional Server Oracle
 
