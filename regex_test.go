@@ -101,6 +101,125 @@ func TestConditionalRegexValidation(t *testing.T) {
 			expression: `"main" =~ /main`,
 			wantError:  ErrorKindParse,
 		},
+		{
+			name:       "lookbehind fails during parsing",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"ab" =~ /(?<=a)b/`,
+			wantError:  ErrorKindParse,
+		},
+		{
+			name:       "negative lookbehind fails during parsing",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"cb" =~ /(?<!a)b/`,
+			wantError:  ErrorKindParse,
+		},
+		{
+			name:       "atomic group fails during parsing",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"aa" =~ /(?>a*)a/`,
+			wantError:  ErrorKindParse,
+		},
+		{
+			name:       "zero or one possessive quantifier fails during parsing",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"a" =~ /a?+/`,
+			wantError:  ErrorKindParse,
+		},
+		{
+			name:       "zero or more possessive quantifier fails during parsing",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"aaa" =~ /a*+/`,
+			wantError:  ErrorKindParse,
+		},
+		{
+			name:       "one or more possessive quantifier fails during parsing",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"aaa" =~ /a++/`,
+			wantError:  ErrorKindParse,
+		},
+		{
+			name:       "bounded possessive quantifier fails during parsing",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"aaa" =~ /a{1,3}+/`,
+			wantError:  ErrorKindParse,
+		},
+		{
+			name:       "exact bounded possessive quantifier fails during parsing",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"aaa" =~ /a{3}+/`,
+			wantError:  ErrorKindParse,
+		},
+		{
+			name:       "open ended bounded possessive quantifier fails during parsing",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"aaa" =~ /a{2,}+/`,
+			wantError:  ErrorKindParse,
+		},
+		{
+			name:       "angle named capture fails during parsing",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"group" =~ /(?<name>group)/`,
+			wantError:  ErrorKindParse,
+		},
+		{
+			name:       "python named capture fails during parsing",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"group" =~ /(?P<name>group)/`,
+			wantError:  ErrorKindParse,
+		},
+		{
+			name:       "single quote named capture fails during parsing",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"group" =~ /(?'name'group)/`,
+			wantError:  ErrorKindParse,
+		},
+		{
+			name:       "conditional regexp fails during parsing",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"a" =~ /(?(1)a|b)/`,
+			wantError:  ErrorKindParse,
+		},
+		{
+			name:       "escaped closing parenthesis ends regexp comment",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"ab" =~ /a(?#\)(?<name>b)/`,
+			wantError:  ErrorKindParse,
+		},
+		{
+			name:       "escaped unsupported tokens remain literals",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"(?<=a)" =~ /\(\?<=a\)/`,
+		},
+		{
+			name:       "escaped bounded quantifier text remains literal",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"{1,3}+" =~ /\{1,3\}\+/`,
+		},
+		{
+			name:       "bare closing brace remains literal",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"}}}" =~ /}+/`,
+		},
+		{
+			name:       "character class unsupported tokens remain literals",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"?" =~ /[(?<=]/`,
+		},
+		{
+			name:       "posix character class keeps outer class open",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"?" =~ /[[:digit:](?<=]/`,
+		},
+		{
+			name:       "leading closing bracket stays literal inside character class",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"]" =~ /[](?<=]/`,
+		},
+		{
+			name:       "regexp comment contents are ignored by feature validator",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"ab" =~ /a(?# (?<= literal )b/`,
+		},
 	}
 
 	runValidateCases(t, tests)
