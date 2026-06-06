@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: active
 last_reviewed: 2026-06-06
 spec_refs:
   - https://buildkite.com/docs/pipelines/configure/conditionals
@@ -221,6 +221,7 @@ type Actor struct {
 
 type Pipeline struct {
 	ID                      *string
+	Name                    *string
 	Slug                    *string
 	DefaultBranch           *string
 	Repository              *string
@@ -266,10 +267,13 @@ type Step struct {
 }
 ```
 
-Fields such as visible teams and preferred emails are caller-supplied
-database-backed facts. Pure conditional values are derived in-library when the
-server does so, such as `build.source_event` from `Build.SourceEvent` or
-`BUILDKITE_GITHUB_EVENT` when `Build.Source == "webhook"`.
+Fields such as visible teams and organization-preferred creator emails are
+caller-supplied database-backed facts. Preferred creator email resolution should
+populate `Actor.Email`, matching the server's `build.creator.email` assignment
+rather than inventing a separate conditional variable. Pure conditional values
+are derived in-library when the server does so, such as `build.source_event`
+from `Build.SourceEvent` or `BUILDKITE_GITHUB_EVENT` when
+`Build.Source == "webhook"`.
 
 Environment merge behavior is part of the public contract:
 
@@ -337,17 +341,17 @@ upstream group is accounted for.
 
 Initial manifest:
 
-| Upstream source | Groups to account for | Required status before parity claim |
-| --- | --- | --- |
-| `spec/models/conditional/parser_spec.rb` | friendly errors, comments, objects/properties, function calls, complex strings, simple expressions, operand precedence, negation, token positions | `ported` or `intentionally_excluded` with reason |
-| `spec/models/conditional/evaluator_spec.rb` | booleans, nulls, arrays, regexes, string comparisons, ternaries, variables/enums, shell substitutions | `ported` |
-| `spec/models/conditional/variable_spec.rb` | typed variables, nullable typed values, enums, lazy values | `ported` or `superseded` by Go type/context tests |
-| `spec/models/build/condition_spec.rb` | `env()`, `build.env()`, build/pipeline/org fields, webhook fields, pull request label, project env merge, validation, context construction | `ported` |
-| `spec/validators/build_condition_validator_spec.rb` | blank/nil validation, invalid conditionals, step-variable validation option | `ported` |
-| `spec/models/build/notification_spec.rb` | no conditional, false on unmet condition, false on parser/evaluation errors | `ported` |
-| `spec/models/step/notification_spec.rb` | step variables and false-on-error notification behavior | `ported` |
-| `spec/models/build/pipeline_config/build_notifications_spec.rb` | config parsing and notification conditional propagation | `blocked` until config parsing is in scope, or `intentionally_excluded` with reason |
-| `spec/models/build/pipeline_config/step_notifications_spec.rb` | config parsing and step notification conditional propagation | `blocked` until config parsing is in scope, or `intentionally_excluded` with reason |
+| Upstream source | Groups to account for | Current status | Required status before parity claim |
+| --- | --- | --- | --- |
+| `spec/models/conditional/parser_spec.rb` | friendly errors, comments, objects/properties, function calls, complex strings, simple expressions, operand precedence, negation, token positions | `blocked`: parser grammar parity is Slice 3 | `ported` or `intentionally_excluded` with reason |
+| `spec/models/conditional/evaluator_spec.rb` | booleans, nulls, arrays, regexes, string comparisons, ternaries, variables/enums, shell substitutions | `blocked`: evaluator parity is Slice 4 | `ported` |
+| `spec/models/conditional/variable_spec.rb` | typed variables, nullable typed values, enums, lazy values | `blocked`: typed context model is Slice 4 and Slice 5 | `ported` or `superseded` by Go type/context tests |
+| `spec/models/build/condition_spec.rb` | `env()`, `build.env()`, build/pipeline/org fields, webhook fields, pull request label, project env merge, validation, context construction | `blocked`: Buildkite context semantics are Slice 5 | `ported` |
+| `spec/validators/build_condition_validator_spec.rb` | blank/nil validation, invalid conditionals, step-variable validation option | `blocked`: root smoke tests cover only blank validation in Slice 1 | `ported` |
+| `spec/models/build/notification_spec.rb` | no conditional, false on unmet condition, false on parser/evaluation errors | `blocked`: root smoke tests cover only false-on-error in Slice 1 | `ported` |
+| `spec/models/step/notification_spec.rb` | step variables and false-on-error notification behavior | `blocked`: root smoke tests cover only step availability in Slice 1 | `ported` |
+| `spec/models/build/pipeline_config/build_notifications_spec.rb` | config parsing and notification conditional propagation | `blocked`: config parsing is not in the current slice | `blocked` until config parsing is in scope, or `intentionally_excluded` with reason |
+| `spec/models/build/pipeline_config/step_notifications_spec.rb` | config parsing and step notification conditional propagation | `blocked`: config parsing is not in the current slice | `blocked` until config parsing is in scope, or `intentionally_excluded` with reason |
 
 The manifest can live in this plan while work is small. If it becomes too large,
 move it to `docs/plans/buildkite-conditionals-upstream-manifest.md` and link it
@@ -376,12 +380,21 @@ from this plan.
 - Some landed behavior is now explicitly provisional because it diverges from
   the server grammar or server regex validator.
 
+### Active Slice
+
+- Slice 1 is creating the root package API, server-derived entrypoint model,
+  public context structs, typed error categories, root smoke tests, and package
+  migration map.
+- `docs/plans/buildkite-conditionals-package-migration.md` records the intended
+  movement from public implementation packages to `internal/` once the root API
+  is ready to own the parity contract.
+
 ### Known Gaps
 
 | Area | Current Behavior | Required Direction |
 | --- | --- | --- |
-| Dotted names | Local parsing/evaluation leans on nested object lookup. | Match the server grammar's flat dotted identifiers for variables and functions. |
-| `build.env()` | Only top-level calls evaluate cleanly. `build.env("NAME")` currently fails during evaluation. | Treat `build.env` as a flat function identifier with server-compatible nullable return behavior. |
+| Dotted names | The root adapter supplies flat assignment keys for server variables, but parser/evaluator internals still keep the older nested-object fallback. | Match the server grammar's flat dotted identifiers throughout parser, type checker, and evaluator internals. |
+| `build.env()` | The root adapter supports `build.env("NAME")` as a flat function identifier, but full validator coverage still belongs in the conformance slices. | Treat `build.env` as a flat function identifier with server-compatible nullable return behavior across validation and conformance tests. |
 | Ternary syntax | Not implemented. | Implement server ternary `condition ? true_value : false_value` precedence and type checking. |
 | Shell substitution | Not implemented. | Implement server grammar for `$name`, `${name}`, default/alternate/error forms, and substring forms. |
 | Scope | Callers pass arbitrary `object.Struct`. | Add server-style Buildkite assignment tables with documented variables and context availability. |

@@ -47,6 +47,14 @@ func Eval(node ast.Node, scope Scope) object.Object {
 		return evalPrefixExpression(node.Operator, right)
 
 	case *ast.InfixExpression:
+		if node.Operator == "." {
+			if key, ok := dottedIdentifier(node); ok {
+				if obj, ok := scope.Get(key); ok {
+					return obj
+				}
+			}
+		}
+
 		left := Eval(node.Left, scope)
 		if isError(left) {
 			return left
@@ -97,6 +105,28 @@ func Eval(node ast.Node, scope Scope) object.Object {
 
 	default:
 		return newError("unhandled type: %T", node)
+	}
+}
+
+func dottedIdentifier(expr ast.Expression) (string, bool) {
+	switch expr := expr.(type) {
+	case *ast.Identifier:
+		return expr.Value, true
+	case *ast.InfixExpression:
+		if expr.Operator != "." {
+			return "", false
+		}
+		left, ok := dottedIdentifier(expr.Left)
+		if !ok {
+			return "", false
+		}
+		right, ok := expr.Right.(*ast.Identifier)
+		if !ok {
+			return "", false
+		}
+		return left + "." + right.Value, true
+	default:
+		return "", false
 	}
 }
 
@@ -192,12 +222,10 @@ func evalLogicalExpression(operator string, left object.Object, rightExp ast.Exp
 func evalBangOperatorExpression(right object.Object) object.Object {
 	// defer untrace(trace("evalBangOperatorExpression", right))
 
-	switch right {
-	case TRUE:
-		return FALSE
-	case FALSE:
-		return TRUE
-	case NULL:
+	switch right := right.(type) {
+	case *object.Boolean:
+		return nativeBoolToBooleanObject(!right.Value)
+	case *object.Null:
 		return TRUE
 	default:
 		return FALSE
