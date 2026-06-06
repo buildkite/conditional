@@ -343,9 +343,9 @@ Initial manifest:
 
 | Upstream source | Groups to account for | Current status | Required status before parity claim |
 | --- | --- | --- | --- |
-| `spec/models/conditional/parser_spec.rb` | friendly errors, comments, objects/properties, function calls, complex strings, simple expressions, operand precedence, negation, token positions | `blocked`: Slice 3 ports flat dotted identifiers/functions, ternary precedence, shell expansion operands, malformed dotted-name rejection, and parser-level rejection of `@>`; complex string interpolation, exact friendly messages, and token positions remain follow-up parser work | `ported` or `intentionally_excluded` with reason |
-| `spec/models/conditional/evaluator_spec.rb` | booleans, nulls, arrays, regexes, string comparisons, ternaries, variables/enums, shell substitutions | `blocked`: Slice 3 adds ternary evaluation; shell substitution evaluation, enum behavior, null-regex semantics, and array-regex includes remain Slice 4 work | `ported` |
-| `spec/models/conditional/variable_spec.rb` | typed variables, nullable typed values, enums, lazy values | `blocked`: typed context model is Slice 4 and Slice 5 | `ported` or `superseded` by Go type/context tests |
+| `spec/models/conditional/parser_spec.rb` | friendly errors, comments, objects/properties, function calls, complex strings, simple expressions, operand precedence, negation, token positions | `blocked`: Slice 3 ports flat dotted identifiers/functions, ternary precedence, shell expansion operands, malformed dotted-name rejection, and parser-level rejection of `@>`; Slice 4 starts double-quoted shell interpolation. Exact friendly messages, token positions, and full string escape parity remain follow-up parser work | `ported` or `intentionally_excluded` with reason |
+| `spec/models/conditional/evaluator_spec.rb` | booleans, nulls, arrays, regexes, string comparisons, ternaries, variables/enums, shell substitutions | `blocked`: Slice 4 ports regex includes, null regex/includes semantics, shell substitution evaluation, double-quoted interpolation, enum literal validation, and type-checker rejection for representative mismatches. Full custom function/lazy variable coverage remains | `ported` |
+| `spec/models/conditional/variable_spec.rb` | typed variables, nullable typed values, enums, lazy values | `blocked`: Slice 4 adds root-level typed variable and enum validation for the Buildkite context model; lazy variable internals and exhaustive variable specs remain Slice 5/cleanup work | `ported` or `superseded` by Go type/context tests |
 | `spec/models/build/condition_spec.rb` | `env()`, `build.env()`, build/pipeline/org fields, webhook fields, pull request label, project env merge, validation, context construction | `blocked`: Slice 2 seeds source-tagged root cases for representative `env()`, `build.env()`, organization, pipeline, webhook, pull request label, project env merge, and validation behavior; the exhaustive context matrix is Slice 5 | `ported` |
 | `spec/validators/build_condition_validator_spec.rb` | blank/nil validation, invalid conditionals, step-variable validation option | `blocked`: Slice 2 ports blank string, invalid expression, step-variable rejection, and step-option acceptance through root validation; nil validation is not representable in the string API | `ported` or `intentionally_excluded` with reason |
 | `spec/models/build/notification_spec.rb` | no conditional, false on unmet condition, false on parser/evaluation errors | `blocked`: Slice 2 ports blank/no-condition equivalent, false-on-unmet condition, false-on-parse-error, and false-on-unavailable-step-variable behavior; full notification parsing/config propagation remains out of scope | `ported` |
@@ -384,24 +384,28 @@ from this plan.
   suite keeps test data in Go code, requires every root conformance case to name
   its docs or upstream `buildkite/buildkite` source, and splits behavior across
   syntax, evaluation, regex, context, and root API error test files.
+- Slice 3 landed parser grammar alignment for flat dotted identifiers/functions,
+  ternary parsing, shell expansion operands, parser-level `@>` rejection, and
+  unterminated string/substitution errors.
 - Some landed behavior is still explicitly provisional because it diverges from
   the server regex validator or still lacks the server type checker.
 
 ### Active Slice
 
-- Slice 3 is aligning parser grammar with the server grammar.
-- Dotted variable identifiers now parse as flat assignment names, not nested dot
-  expressions.
-- Dotted function identifiers now parse as flat function names, including
-  `build.env(...)`.
-- Ternary expressions parse with server precedence and evaluate lazily through
-  the current evaluator.
-- Shell expansion operands such as `$branch`, `${branch:-fallback}`, and nested
-  substring expressions tokenize and parse as shell expansion AST nodes. Full
-  evaluation semantics and double-quoted string interpolation remain Slice 4
-  work because they require the environment substitution evaluator.
-- `@>` is removed from the parser surface and now fails as a parse error instead
-  of being parsed then rejected later by root validation.
+- Slice 4 is aligning type checking and evaluator semantics with the server
+  evaluator.
+- Root `Validate` now uses server-style type checking instead of evaluating the
+  expression just to prove it returns a boolean. Unknown variables/functions,
+  wrong arity, incompatible operators, invalid `env()` argument types, enum
+  mismatches, and non-boolean root results fail before runtime.
+- Evaluator semantics now match upstream cases for regex `includes`, `null
+  includes ...`, `null =~ /.../`, `null !~ /.../`, and short-circuiting branches
+  that would otherwise fail at runtime.
+- Shell expansion operands now evaluate against the merged Buildkite
+  environment for set, unset, empty, required, default, alternate, substring,
+  nested substring argument, and bad substring length cases.
+- Double-quoted strings now evaluate shell substitutions, while single-quoted
+  strings keep shell-looking text literal.
 - Server-supported cases that the current implementation cannot pass are not
   added as skipped tests. They remain recorded in the manifest and known gaps
   until the parser, evaluator, context, and regex parity slices implement them.
@@ -415,12 +419,12 @@ from this plan.
 | --- | --- | --- |
 | Dotted names | Parser and evaluator internals now use flat dotted identifiers for server variables. Some public implementation packages still expose older generic-language concepts during transition. | Finish removing nested object lookup assumptions and move implementation packages under `internal/` in the cleanup slice. |
 | `build.env()` | `build.env("NAME")` parses as a flat function identifier and evaluates through the root adapter. | Expand validator and conformance coverage for server-compatible nullable return behavior in Slice 5. |
-| Ternary syntax | Ternaries parse with server precedence and evaluate lazily, but type checking is still runtime-only. | Add server-compatible type checking and error categories in Slice 4. |
-| Shell substitution | Shell expansion operands tokenize and parse. Double-quoted interpolation and substitution evaluation are not implemented yet. | Implement server evaluation for `$name`, `${name}`, default/alternate/error forms, nested fallbacks, double-quoted string interpolation, and substring forms. |
+| Ternary syntax | Ternaries parse with server precedence, evaluate lazily, and now type-check branch compatibility through the root API. | Expand conformance coverage for every upstream ternary type-checker case before marking Slice 4 complete. |
+| Shell substitution | Shell expansion operands and double-quoted interpolation evaluate for the upstream set/unset/empty/default/alternate/required/substring matrix. | Finish exact string escape parity, shell fallback string grammar coverage, and package-local parser/evaluator tests for edge cases beyond the current root tables. |
 | Scope | Callers pass arbitrary `object.Struct`. | Add server-style Buildkite assignment tables with documented variables and context availability. |
 | Nullable values | Missing nested properties error. | Documented nullable variables should be present as `null` for the right contexts. Truly unknown properties should still fail closed. |
 | Context restrictions | No context kind. | Enforce pipeline, step, build-notification, and step-notification variable availability. |
-| Final result | `Eval` returns any `object.Object`. Tests often ignore parser errors. | Public Buildkite evaluation should return `(bool, error)` and treat non-boolean results as errors. |
+| Final result | Root `Validate`/`Evaluate` now type-check for a boolean final result; lower-level `Eval` still returns any `object.Object` during transition. | Move implementation packages under `internal/` and keep root `(bool, error)` as the supported Buildkite surface. |
 | Regex syntax | regexp2 accepts some features the server rejects. | Keep regexp2 only with a server-compatible validator for flags and unsupported constructs. |
 | Divergent operators | `@>` no longer tokenizes as a Buildkite parser operator. Some lower-level compatibility constants may remain until cleanup. | Remove remaining dead `@>` constants or generic-language artifacts in the cleanup slice. |
 | Type mismatch semantics | Local behavior exists but is not server-proven. | Build a server-derived matrix for equality, regex matching, `includes`, `!`, missing values, and function argument errors. |
@@ -720,6 +724,8 @@ Current Slice 3 progress:
   empty values and cannot be represented by the current `StringLiteral` alone.
 - `@>` is rejected by the parser rather than by root validation.
 
+Status: landed.
+
 ### Slice 4: Type Checking And Evaluation Semantics
 
 Port the server type-checker and evaluator behavior without copying the Ruby
@@ -737,6 +743,28 @@ Definition of done:
   or failing functions, matching server behavior.
 - Environment substitution evaluates set, unset, empty, required, default,
   alternate, and substring forms the same way as the server.
+
+Current Slice 4 progress:
+
+- Root validation now runs a compact server-style type checker before
+  evaluation. The checker covers documented Buildkite variables, the current
+  `env` and `build.env` functions, operator compatibility, enum literal
+  validation for the modeled Buildkite enums, final boolean result validation,
+  and unknown variable/function rejection.
+- Evaluation now matches upstream server cases for regex `includes`, null array
+  includes, null regex matching/non-matching, and lazy short-circuiting of
+  runtime-failing shell substitutions.
+- Shell substitutions now evaluate for `$name`, `${name}`, `${name?}`,
+  `${name:?}`, `${name-default}`, `${name:-default}`, `${name+alternate}`,
+  `${name:+alternate}`, substring forms, nested substring arguments, unset
+  values, empty values, and invalid substring lengths.
+- Double-quoted strings interpolate shell substitutions and collapse `$$` to a
+  literal dollar. Single-quoted strings remain literal.
+- Remaining Slice 4 work before marking the slice landed: exact server string
+  escape parity across single-quoted, double-quoted, and shell fallback strings;
+  broader upstream type-checker cases for custom functions and lazy variables;
+  and package-local parser/evaluator tests for the substitution grammar beyond
+  the current root conformance tables.
 
 ### Slice 5: Buildkite Context And `env()` Semantics
 

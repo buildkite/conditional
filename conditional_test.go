@@ -14,7 +14,7 @@ func TestRootValidateAndEvaluateErrorKinds(t *testing.T) {
 		{
 			name:       "evaluation error",
 			source:     upstreamBuildConditionSpec,
-			expression: `unknown.value == "x"`,
+			expression: `${notset:?} == "x"`,
 			ctx:        Context{EntryPoint: EntryPointBuildCondition},
 			wantError:  ErrorKindEvaluation,
 		},
@@ -45,13 +45,6 @@ func TestRootValidateErrorKinds(t *testing.T) {
 			expression: `nope != == one`,
 			ctx:        Context{EntryPoint: EntryPointBuildCondition},
 			wantError:  ErrorKindParse,
-		},
-		{
-			name:       "evaluation error",
-			source:     upstreamBuildConditionSpec,
-			expression: `unknown.value == "x"`,
-			ctx:        Context{EntryPoint: EntryPointBuildCondition},
-			wantError:  ErrorKindEvaluation,
 		},
 		{
 			name:       "result error",

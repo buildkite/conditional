@@ -26,10 +26,7 @@ func Validate(expression string, ctx Context) error {
 		return err
 	}
 	ctx.EntryPoint = entryPoint
-	if err := validateExpression(expr, entryPoint); err != nil {
-		return err
-	}
-	return validateBooleanResult(expr, ctx)
+	return validateExpression(expr, ctx)
 }
 
 // Evaluate evaluates expression in the selected Buildkite context.
@@ -56,7 +53,7 @@ func evaluate(expression string, ctx Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if err := validateExpression(expr, ctx.EntryPoint); err != nil {
+	if err := validateExpression(expr, ctx); err != nil {
 		return false, err
 	}
 
@@ -89,7 +86,8 @@ func parse(expression string) (ast.Expression, error) {
 	return expr, nil
 }
 
-func validateExpression(expr ast.Expression, entryPoint EntryPoint) error {
+func validateExpression(expr ast.Expression, ctx Context) error {
+	entryPoint := ctx.EntryPoint
 	if !stepAllowed(entryPoint) && referencesRoot(expr, "step") {
 		return &Error{
 			Kind:    ErrorKindValidation,
@@ -102,22 +100,7 @@ func validateExpression(expr ast.Expression, entryPoint EntryPoint) error {
 	if err := validateOperators(expr); err != nil {
 		return err
 	}
-	return nil
-}
-
-func validateBooleanResult(expr ast.Expression, ctx Context) error {
-	result := evaluator.Eval(expr, buildScope(ctx))
-	switch result := result.(type) {
-	case *object.Boolean:
-		return nil
-	case *object.Error:
-		return &Error{Kind: ErrorKindEvaluation, Message: result.Message}
-	default:
-		return &Error{
-			Kind:    ErrorKindResult,
-			Message: fmt.Sprintf("expected boolean result, got %s", result.Type()),
-		}
-	}
+	return typeCheckExpression(expr, ctx)
 }
 
 func validateEnvCalls(expr ast.Expression) error {
@@ -136,6 +119,9 @@ func validateEnvCalls(expr ast.Expression) error {
 		if err := validateEnvCalls(expr.Left); err != nil {
 			return err
 		}
+		if logicalExpressionShortCircuits(expr) {
+			return nil
+		}
 		return validateEnvCalls(expr.Right)
 	case *ast.CallExpression:
 		if expr.Function == "env" || expr.Function == "build.env" {
@@ -145,10 +131,23 @@ func validateEnvCalls(expr ast.Expression) error {
 					Message: fmt.Sprintf("%s expects exactly one argument", expr.Function),
 				}
 			}
-			if arg, ok := expr.Arguments[0].(*ast.StringLiteral); ok && unsupportedBuildkiteEnv(arg.Value) {
-				return &Error{
-					Kind:    ErrorKindValidation,
-					Message: fmt.Sprintf("%q is not a supported Buildkite environment variable", arg.Value),
+			if arg, ok := expr.Arguments[0].(*ast.StringLiteral); ok && !runtimeStringLiteral(arg) {
+				switch {
+				case strings.HasPrefix(arg.Value, "$"):
+					return &Error{
+						Kind:    ErrorKindValidation,
+						Message: "env argument should not include $",
+					}
+				case !validEnvName(arg.Value):
+					return &Error{
+						Kind:    ErrorKindValidation,
+						Message: "env argument should be an environment variable name",
+					}
+				case unsupportedBuildkiteEnv(arg.Value):
+					return &Error{
+						Kind:    ErrorKindValidation,
+						Message: fmt.Sprintf("%q is not a supported Buildkite environment variable", arg.Value),
+					}
 				}
 			}
 		}
@@ -186,6 +185,9 @@ func validateOperators(expr ast.Expression) error {
 		}
 		if err := validateOperators(expr.Left); err != nil {
 			return err
+		}
+		if logicalExpressionShortCircuits(expr) {
+			return nil
 		}
 		return validateOperators(expr.Right)
 	case *ast.CallExpression:
@@ -237,7 +239,17 @@ func referencesRoot(expr ast.Expression, root string) bool {
 	return false
 }
 
-func buildScope(ctx Context) object.Struct {
+type evaluationScope struct {
+	object.Struct
+	env map[string]string
+}
+
+func (s evaluationScope) LookupEnv(key string) (string, bool) {
+	value, ok := s.env[key]
+	return value, ok
+}
+
+func buildScope(ctx Context) evaluationScope {
 	env := mergedEnv(ctx)
 
 	scope := object.Struct{
@@ -255,7 +267,7 @@ func buildScope(ctx Context) object.Struct {
 		scope["step"] = stepObject(ctx.Step)
 	}
 
-	return scope
+	return evaluationScope{Struct: scope, env: env}
 }
 
 func envFunction(env map[string]string) object.Function {
@@ -560,6 +572,19 @@ func unsupportedBuildkiteEnv(key string) bool {
 	}
 	_, ok := supportedBuildkiteEnv[key]
 	return !ok
+}
+
+func validEnvName(key string) bool {
+	if key == "" {
+		return false
+	}
+	for _, ch := range key {
+		if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func builtinEnv(ctx Context) map[string]string {

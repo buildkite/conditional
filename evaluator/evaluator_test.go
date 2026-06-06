@@ -258,6 +258,11 @@ func TestConditionalExpression(t *testing.T) {
 	}
 }
 
+func TestDoubleQuotedShellExpansionWithoutEnvironmentScopeRemainsLiteral(t *testing.T) {
+	evaluated := testEval(`"${branch}" == "${branch}"`)
+	testBooleanObject(t, evaluated, true)
+}
+
 func testEval(input string) object.Object {
 	return testEvalWithScope(input, object.Struct{})
 }

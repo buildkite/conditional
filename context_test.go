@@ -277,6 +277,30 @@ func TestBuildkiteEnvironmentFunctions(t *testing.T) {
 			want: true,
 		},
 		{
+			name:       "env accepts interpolated variable name",
+			source:     upstreamBuildConditionSpec,
+			expression: `env("${NAME}") == "value"`,
+			ctx: Context{
+				EntryPoint: EntryPointBuildCondition,
+				BuildEnv: map[string]string{
+					"NAME":        "DYNAMIC_ENV",
+					"DYNAMIC_ENV": "value",
+				},
+			},
+			want: true,
+		},
+		{
+			name:       "build env accepts interpolated Buildkite variable name",
+			source:     upstreamBuildConditionSpec,
+			expression: `build.env("BUILDKITE_${SUFFIX}") == "main"`,
+			ctx: Context{
+				EntryPoint: EntryPointBuildCondition,
+				Build:      Build{Branch: str("main")},
+				BuildEnv:   map[string]string{"SUFFIX": "BRANCH"},
+			},
+			want: true,
+		},
+		{
 			name:       "built in tag becomes empty string for env",
 			source:     upstreamBuildConditionSpec,
 			expression: `env("BUILDKITE_TAG") == ""`,
@@ -377,7 +401,7 @@ func TestBuildkiteContextValidation(t *testing.T) {
 			source:     upstreamBuildValidatorSpec,
 			expression: "lol",
 			ctx:        Context{EntryPoint: EntryPointBuildCondition},
-			wantError:  ErrorKindEvaluation,
+			wantError:  ErrorKindValidation,
 		},
 		{
 			name:       "step variables rejected without step option",
