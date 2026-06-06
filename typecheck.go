@@ -24,8 +24,9 @@ type enumType struct {
 }
 
 type valueType struct {
-	kind valueKind
-	enum *enumType
+	kind     valueKind
+	enum     *enumType
+	nullable bool
 }
 
 type functionSignature struct {
@@ -48,7 +49,7 @@ func typeCheckExpression(expr ast.Expression, ctx Context) error {
 	if err != nil {
 		return err
 	}
-	if got.kind != kindBool && got.kind != kindUnknown {
+	if (got.kind != kindBool && got.kind != kindUnknown) || got.nullable {
 		return &Error{
 			Kind:    ErrorKindResult,
 			Message: fmt.Sprintf("expected boolean result, got %s", got.describe()),
@@ -174,7 +175,8 @@ func (c typeChecker) checkComparisonTypes(left, right ast.Expression) (valueType
 	}
 
 	if leftType.kind == kindNull || leftType.kind == kindUnknown {
-		return c.check(right)
+		rightType, err := c.check(right)
+		return rightType.withNull(), err
 	}
 
 	if leftType.enum != nil {
@@ -185,6 +187,17 @@ func (c typeChecker) checkComparisonTypes(left, right ast.Expression) (valueType
 			return valueType{kind: kindUnknown}, validationError("%q is not a valid `%s`", literal.Value, identifierName(left))
 		}
 		return leftType, nil
+	}
+
+	rightType, err := c.check(right)
+	if err != nil {
+		return valueType{kind: kindUnknown}, err
+	}
+	if rightType.enum != nil && leftType.kind == kindString {
+		if literal, ok := left.(*ast.StringLiteral); ok && !rightType.enum.includes(literal.Value) {
+			return valueType{kind: kindUnknown}, validationError("%q is not a valid `%s`", literal.Value, identifierName(right))
+		}
+		return rightType, nil
 	}
 
 	if err := c.expectAny(right, leftType.kind, kindNull); err != nil {
@@ -205,8 +218,12 @@ func (c typeChecker) expectAny(expr ast.Expression, expected ...valueKind) error
 	if actual.kind == kindUnknown {
 		return nil
 	}
+	allowsNull := containsKind(expected, kindNull)
 	for _, expectedKind := range expected {
 		if actual.enum == nil && actual.kind == expectedKind {
+			if actual.nullable && !allowsNull {
+				continue
+			}
 			return nil
 		}
 	}
@@ -316,9 +333,23 @@ func enumValueType(name string, values ...string) valueType {
 
 func (t valueType) describe() string {
 	if t.enum != nil {
+		if t.nullable {
+			return "nullable " + t.enum.name + " enumeration value"
+		}
 		return t.enum.name + " enumeration value"
 	}
+	if t.nullable {
+		return "nullable " + string(t.kind)
+	}
 	return string(t.kind)
+}
+
+func (t valueType) withNull() valueType {
+	if t.kind == kindUnknown {
+		return t
+	}
+	t.nullable = true
+	return t
 }
 
 func (e enumType) includes(value string) bool {
@@ -347,6 +378,15 @@ func describeKinds(kinds []valueKind) string {
 		}
 	}
 	return out
+}
+
+func containsKind(kinds []valueKind, target valueKind) bool {
+	for _, kind := range kinds {
+		if kind == target {
+			return true
+		}
+	}
+	return false
 }
 
 func identifierName(expr ast.Expression) string {

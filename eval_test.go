@@ -93,6 +93,15 @@ func TestConditionalEvaluationSemantics(t *testing.T) {
 			want: true,
 		},
 		{
+			name:       "valid enum comparison can put literal first",
+			source:     upstreamParserSpec,
+			expression: `"passed" == build.state`,
+			ctx: Context{
+				Build: Build{State: str("passed")},
+			},
+			want: true,
+		},
+		{
 			name:       "null includes string evaluates false",
 			source:     upstreamEvaluatorSpec,
 			expression: `null includes "fruit"`,
@@ -162,6 +171,12 @@ func TestConditionalEvaluationSemantics(t *testing.T) {
 			name:       "non boolean result fails closed",
 			source:     upstreamBuildValidatorSpec,
 			expression: `"not boolean"`,
+			wantError:  ErrorKindResult,
+		},
+		{
+			name:       "nullable ternary result fails closed",
+			source:     upstreamParserSpec,
+			expression: `true ? null : true`,
 			wantError:  ErrorKindResult,
 		},
 	}
@@ -289,6 +304,13 @@ func TestConditionalShellSubstitutionEvaluation(t *testing.T) {
 			name:       "double quoted strings interpolate shell variables",
 			source:     upstreamEvaluatorSpec,
 			expression: `"${branch}" == "main"`,
+			ctx:        ctx,
+			want:       true,
+		},
+		{
+			name:       "double quoted interpolation preserves backslashes",
+			source:     upstreamParserSpec,
+			expression: `"C:\\${branch}" == "C:\\main"`,
 			ctx:        ctx,
 			want:       true,
 		},

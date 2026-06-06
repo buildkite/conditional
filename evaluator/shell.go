@@ -196,8 +196,16 @@ func evalShellString(raw string, env EnvScope) (string, error) {
 			}
 			i = next
 		case '\\':
-			value, next := readShellEscape(raw, i)
-			out.WriteString(value)
+			next := i
+			for next < len(raw) && raw[next] == '\\' {
+				next++
+			}
+			if next < len(raw) && raw[next] == '$' && next == i+1 {
+				out.WriteByte('$')
+				i = next + 1
+				continue
+			}
+			out.WriteString(raw[i:next])
 			i = next
 		default:
 			out.WriteByte(raw[i])
@@ -283,34 +291,6 @@ func readShellExpansion(raw string, start int) (string, int, bool) {
 		}
 	}
 	return "", start, false
-}
-
-func readShellEscape(raw string, start int) (string, int) {
-	if start+1 >= len(raw) {
-		return "", start + 1
-	}
-	switch raw[start+1] {
-	case 'n':
-		return "\n", start + 2
-	case 's':
-		return " ", start + 2
-	case 'r':
-		return "\r", start + 2
-	case 't':
-		return "\t", start + 2
-	case 'v':
-		return "\v", start + 2
-	case 'f':
-		return "\f", start + 2
-	case 'b':
-		return "\b", start + 2
-	case 'a':
-		return "\a", start + 2
-	case 'e':
-		return "\x1b", start + 2
-	default:
-		return string(raw[start+1]), start + 2
-	}
 }
 
 func isShellIdentStart(ch byte) bool {
