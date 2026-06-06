@@ -486,7 +486,7 @@ from this plan.
 | Shell substitution | Shell expansion operands, double-quoted interpolation, server string escapes, and quoted fallback strings evaluate for the upstream set/unset/empty/default/alternate/required/substring matrix and representative fallback grammar cases. | Run a final upstream parser/evaluator audit before marking every shell substitution group accounted for. |
 | Scope | Callers pass arbitrary `object.Struct`. | Add server-style Buildkite assignment tables with documented variables and context availability. |
 | Nullable values | Documented nullable Buildkite assignments are present as runtime `null` while keeping their server-declared type for validation. Truly unknown variables still fail closed. | Finish the exhaustive context matrix and lazy variable coverage so every documented nullable field is covered in every entrypoint. |
-| Context restrictions | No context kind. | Enforce pipeline, step, build-notification, and step-notification variable availability. |
+| Context restrictions | Root entrypoints now model build conditions, build conditions with a step, build notifications, and step notifications. `step.*` fails validation unless the entrypoint supplies a step, and notification entrypoints convert parse, validation, and evaluation errors to `false`. | Finish auditing entrypoint-specific docs/server differences, especially variables documented as notification-only but exposed by `Build::Condition.context`. |
 | Final result | Root `Validate`/`Evaluate` now type-check for a boolean final result; lower-level `Eval` still returns any `object.Object` during transition. | Move implementation packages under `internal/` and keep root `(bool, error)` as the supported Buildkite surface. |
 | Regex syntax | regexp2 accepts some features the server rejects. | Keep regexp2 only with a server-compatible validator for flags and unsupported constructs. |
 | Divergent operators | `@>` no longer tokenizes as a Buildkite parser operator. Some lower-level compatibility constants may remain until cleanup. | Remove remaining dead `@>` constants or generic-language artifacts in the cleanup slice. |
@@ -856,7 +856,8 @@ Definition of done:
 - `BUILDKITE_*` allowlist validation, typo suggestions, invalid names, and names
   starting with `$` match server error categories.
 - Project env and build env merge semantics match `Build::PipelineEnvironment`.
-- `step.*` only in step notification context.
+- `step.*` only when the server path supplies a step: build condition
+  validation/evaluation with a step and step notification conditionals.
 - `build.pull_request.*` values on PR and non-PR builds.
 - `build.merge_queue.*` values on merge queue and non-merge-queue builds.
 - Verified and unverified actor cases for `build.author.*`,
@@ -888,6 +889,10 @@ Current Slice 5 progress:
   and merge queue assignments. Actor coverage includes nil teams, empty teams,
   caller-supplied visible team slugs, verified creator state, and preferred
   email values.
+- `build.pull_request.label` now follows the server helper exactly: it is gated
+  by `build.source_event == "pull_request"` and otherwise exposes the
+  caller-provided webhook payload label without also requiring a
+  `build.source_action`.
 - `BUILDKITE_GIT_DIFF_BASE` is gated by explicit merge-queue build state, then
   uses either the merge queue base branch or base commit according to the
   pipeline provider setting.

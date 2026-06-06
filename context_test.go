@@ -151,7 +151,7 @@ func TestBuildkiteContextAssignments(t *testing.T) {
 			want: true,
 		},
 		{
-			name:       "pull request label only for labeled event",
+			name:       "pull request label only for pull request event",
 			source:     upstreamBuildConditionSpec,
 			expression: `build.pull_request.label == "test-gpu"`,
 			ctx: Context{
@@ -166,7 +166,21 @@ func TestBuildkiteContextAssignments(t *testing.T) {
 			want: true,
 		},
 		{
-			name:       "pull request label null for opened event",
+			name:       "pull request label does not require source action",
+			source:     upstreamBuildConditionSpec,
+			expression: `build.pull_request.label == "docs"`,
+			ctx: Context{
+				EntryPoint: EntryPointBuildCondition,
+				Build: Build{
+					Source:      str("webhook"),
+					SourceEvent: str("pull_request"),
+					PullRequest: PullRequest{Label: str("docs")},
+				},
+			},
+			want: true,
+		},
+		{
+			name:       "pull request label null without payload label",
 			source:     upstreamBuildConditionSpec,
 			expression: `build.pull_request.label == null`,
 			ctx: Context{
@@ -175,7 +189,20 @@ func TestBuildkiteContextAssignments(t *testing.T) {
 					Source:       str("webhook"),
 					SourceEvent:  str("pull_request"),
 					SourceAction: str("opened"),
-					PullRequest:  PullRequest{Label: str("test-gpu")},
+				},
+			},
+			want: true,
+		},
+		{
+			name:       "pull request label null outside pull request event",
+			source:     upstreamBuildConditionSpec,
+			expression: `build.pull_request.label == null`,
+			ctx: Context{
+				EntryPoint: EntryPointBuildCondition,
+				Build: Build{
+					Source:      str("webhook"),
+					SourceEvent: str("push"),
+					PullRequest: PullRequest{Label: str("docs")},
 				},
 			},
 			want: true,
