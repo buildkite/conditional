@@ -79,6 +79,12 @@ func TestConditionalEvaluationSemantics(t *testing.T) {
 			want:       true,
 		},
 		{
+			name:       "empty array equality evaluates matching arrays",
+			source:     upstreamEvaluatorSpec,
+			expression: `[] == []`,
+			want:       true,
+		},
+		{
 			name:       "array null equality evaluates false",
 			source:     upstreamParserSpec,
 			expression: `["a"] == null`,
