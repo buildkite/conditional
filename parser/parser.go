@@ -239,6 +239,10 @@ func (p *Parser) parseRegexp() ast.Expression {
 		p.errors = append(p.errors, err.Error())
 		return nil
 	}
+	if err := validateRegexp(p.curToken.Literal); err != nil {
+		p.errors = append(p.errors, err.Error())
+		return nil
+	}
 
 	r, err := regexp2.Compile(p.curToken.Literal, options)
 	if err != nil {
@@ -266,6 +270,71 @@ func regexpOptions(flags string) (regexp2.RegexOptions, error) {
 	}
 
 	return options, nil
+}
+
+func validateRegexp(pattern string) error {
+	escaped := false
+	inClass := false
+
+	for i := 0; i < len(pattern); i++ {
+		ch := pattern[i]
+		if escaped {
+			escaped = false
+			continue
+		}
+		if ch == '\\' {
+			escaped = true
+			continue
+		}
+		if inClass {
+			if ch == ']' {
+				inClass = false
+			}
+			continue
+		}
+		if ch == '[' {
+			inClass = true
+			continue
+		}
+
+		if ch == '(' && i+1 < len(pattern) && pattern[i+1] == '?' {
+			switch {
+			case hasRegexpPrefix(pattern, i, "(?<="):
+				return unsupportedRegexpFeature("lookbehind")
+			case hasRegexpPrefix(pattern, i, "(?<!"):
+				return unsupportedRegexpFeature("nlookbehind")
+			case hasRegexpPrefix(pattern, i, "(?>"):
+				return unsupportedRegexpFeature("atomic")
+			case hasRegexpPrefix(pattern, i, "(?<"):
+				return unsupportedRegexpFeature("named_ab")
+			case hasRegexpPrefix(pattern, i, "(?'"):
+				return unsupportedRegexpFeature("named_sq")
+			case hasRegexpPrefix(pattern, i, "(?("):
+				return unsupportedRegexpFeature("condition_open")
+			}
+		}
+
+		if i+1 < len(pattern) && pattern[i+1] == '+' {
+			switch ch {
+			case '?':
+				return unsupportedRegexpFeature("zero_or_one_possessive")
+			case '*':
+				return unsupportedRegexpFeature("zero_or_more_possessive")
+			case '+':
+				return unsupportedRegexpFeature("one_or_more_possessive")
+			}
+		}
+	}
+
+	return nil
+}
+
+func hasRegexpPrefix(pattern string, offset int, prefix string) bool {
+	return len(pattern)-offset >= len(prefix) && pattern[offset:offset+len(prefix)] == prefix
+}
+
+func unsupportedRegexpFeature(feature string) error {
+	return fmt.Errorf("unsupported regexp feature: %s", feature)
 }
 
 func (p *Parser) parsePrefixExpression() ast.Expression {

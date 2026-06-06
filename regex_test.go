@@ -101,6 +101,70 @@ func TestConditionalRegexValidation(t *testing.T) {
 			expression: `"main" =~ /main`,
 			wantError:  ErrorKindParse,
 		},
+		{
+			name:       "lookbehind fails during parsing",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"ab" =~ /(?<=a)b/`,
+			wantError:  ErrorKindParse,
+		},
+		{
+			name:       "negative lookbehind fails during parsing",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"cb" =~ /(?<!a)b/`,
+			wantError:  ErrorKindParse,
+		},
+		{
+			name:       "atomic group fails during parsing",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"aa" =~ /(?>a*)a/`,
+			wantError:  ErrorKindParse,
+		},
+		{
+			name:       "zero or one possessive quantifier fails during parsing",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"a" =~ /a?+/`,
+			wantError:  ErrorKindParse,
+		},
+		{
+			name:       "zero or more possessive quantifier fails during parsing",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"aaa" =~ /a*+/`,
+			wantError:  ErrorKindParse,
+		},
+		{
+			name:       "one or more possessive quantifier fails during parsing",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"aaa" =~ /a++/`,
+			wantError:  ErrorKindParse,
+		},
+		{
+			name:       "angle named capture fails during parsing",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"group" =~ /(?<name>group)/`,
+			wantError:  ErrorKindParse,
+		},
+		{
+			name:       "single quote named capture fails during parsing",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"group" =~ /(?'name'group)/`,
+			wantError:  ErrorKindParse,
+		},
+		{
+			name:       "conditional regexp fails during parsing",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"a" =~ /(?(1)a|b)/`,
+			wantError:  ErrorKindParse,
+		},
+		{
+			name:       "escaped unsupported tokens remain literals",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"(?<=a)" =~ /\(\?<=a\)/`,
+		},
+		{
+			name:       "character class unsupported tokens remain literals",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"?" =~ /[(?<=]/`,
+		},
 	}
 
 	runValidateCases(t, tests)

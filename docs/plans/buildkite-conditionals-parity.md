@@ -947,6 +947,16 @@ Definition of done:
 - The library rejects server-rejected regex features even if regexp2 can execute
   them.
 
+Current Slice 6 progress:
+
+- A pre-compile regex validator now rejects the explicit server-denied token
+  families from `Conditional::Regexp`: lookbehind, negative lookbehind, atomic
+  groups, possessive `?+`, `*+`, and `++` quantifiers, angle and single-quote
+  named captures, and regex conditionals.
+- Source-tagged regex validation tests cover those rejected constructs and guard
+  that escaped text and character class contents are not mistaken for regex
+  features.
+
 ### Slice 7: Divergence Removal And Codebase Cleanup
 
 Remove syntax, tests, examples, and package shape that conflict with exact
