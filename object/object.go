@@ -128,7 +128,16 @@ func (ao *Array) String() string {
 	return out.String()
 }
 func (ao *Array) Equals(o Object) bool {
-	return reflect.DeepEqual(ao, o)
+	other, ok := o.(*Array)
+	if !ok || len(ao.Elements) != len(other.Elements) {
+		return false
+	}
+	for i, element := range ao.Elements {
+		if element.Type() != other.Elements[i].Type() || !element.Equals(other.Elements[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 type Error struct {

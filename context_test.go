@@ -223,6 +223,249 @@ func TestBuildkiteContextAssignments(t *testing.T) {
 	runEvaluateCases(t, tests)
 }
 
+func TestBuildkiteContextFullAssignmentMatrix(t *testing.T) {
+	ctx := Context{
+		EntryPoint: EntryPointBuildCondition,
+		Build: Build{
+			ID:           str("build-uuid"),
+			State:        str("scheduled"),
+			Fixed:        boolptr(false),
+			BlockedState: str("passed"),
+			Source:       str("webhook"),
+			SourceEvent:  str("pull_request"),
+			SourceAction: str("labeled"),
+			Branch:       str("the-branch"),
+			Tag:          str("the-tag"),
+			Message:      str("the-message"),
+			Commit:       str("the-commit"),
+			Number:       intptr(1234),
+			Creator: Actor{
+				ID:       str("created-by-uuid"),
+				Name:     str("Created By Name"),
+				Email:    str("created_by@email.com"),
+				Verified: boolptr(false),
+			},
+			Author: Actor{
+				ID:    str("authored-by-uuid"),
+				Name:  str("Authored By Name"),
+				Email: str("authored_by@email.com"),
+			},
+			SCM: SCM{
+				AuthorName:     str("Samantha Carter"),
+				AuthorEmail:    str("sam@sgc.gov"),
+				CommitterName:  str("GitHub"),
+				CommitterEmail: str("noreply@github.com"),
+			},
+			PullRequest: PullRequest{
+				ID:             str("1234"),
+				BaseBranch:     str("base-branch-party"),
+				Draft:          boolptr(false),
+				Label:          str("test-gpu"),
+				Labels:         []string{"bug", "feature", "duplicate"},
+				Repository:     str("git@foo.com"),
+				RepositoryFork: boolptr(true),
+			},
+			MergeQueue: MergeQueue{
+				BaseBranch: str("merge-base-branch"),
+				BaseCommit: str("merge-base-commit"),
+			},
+		},
+		Pipeline: Pipeline{
+			ID:                      str("pipeline-uuid"),
+			Slug:                    str("pipeline-slug"),
+			DefaultBranch:           str("main"),
+			Repository:              str("git@github.com:acme/repo.git"),
+			StartedPassing:          boolptr(false),
+			StartedFailing:          boolptr(false),
+			NextFinishedBuildExists: boolptr(true),
+			Name:                    str("Deploy"),
+		},
+		Organization: Organization{
+			ID:   str("organization-uuid"),
+			Slug: str("organization-slug"),
+		},
+	}
+
+	tests := []evaluateCase{
+		{
+			name:       "build scalar assignments",
+			source:     upstreamBuildConditionSpec,
+			expression: `build.id == "build-uuid" && build.state == "scheduled" && !build.fixed && build.blocked_state == "passed" && build.source == "webhook" && build.branch == "the-branch" && build.tag == "the-tag" && build.message == "the-message" && build.commit == "the-commit" && build.number == 1234`,
+			ctx:        ctx,
+			want:       true,
+		},
+		{
+			name:       "webhook source assignments",
+			source:     upstreamBuildConditionSpec,
+			expression: `build.source_event == "pull_request" && build.source_action == "labeled" && build.pull_request.label == "test-gpu"`,
+			ctx:        ctx,
+			want:       true,
+		},
+		{
+			name:       "creator assignments",
+			source:     upstreamBuildConditionSpec,
+			expression: `build.creator.id == "created-by-uuid" && build.creator.name == "Created By Name" && build.creator.email == "created_by@email.com" && build.creator.teams == null && !build.creator.verified`,
+			ctx:        ctx,
+			want:       true,
+		},
+		{
+			name:       "author assignments",
+			source:     upstreamBuildConditionSpec,
+			expression: `build.author.id == "authored-by-uuid" && build.author.name == "Authored By Name" && build.author.email == "authored_by@email.com" && build.author.teams == null`,
+			ctx:        ctx,
+			want:       true,
+		},
+		{
+			name:       "scm assignments",
+			source:     upstreamBuildConditionSpec,
+			expression: `build.scm.author.name == "Samantha Carter" && build.scm.author.email == "sam@sgc.gov" && build.scm.committer.name == "GitHub" && build.scm.committer.email == "noreply@github.com"`,
+			ctx:        ctx,
+			want:       true,
+		},
+		{
+			name:       "pull request assignments",
+			source:     upstreamBuildConditionSpec,
+			expression: `build.pull_request.id == "1234" && build.pull_request.base_branch == "base-branch-party" && !build.pull_request.draft && build.pull_request.labels == ["bug", "feature", "duplicate"] && build.pull_request.repository == "git@foo.com" && build.pull_request.repository.fork`,
+			ctx:        ctx,
+			want:       true,
+		},
+		{
+			name:       "merge queue assignments",
+			source:     upstreamBuildConditionSpec,
+			expression: `build.merge_queue.base_branch == "merge-base-branch" && build.merge_queue.base_commit == "merge-base-commit"`,
+			ctx:        ctx,
+			want:       true,
+		},
+		{
+			name:       "pipeline assignments",
+			source:     upstreamBuildConditionSpec,
+			expression: `pipeline.id == "pipeline-uuid" && pipeline.slug == "pipeline-slug" && pipeline.default_branch == "main" && pipeline.repository == "git@github.com:acme/repo.git" && !pipeline.started_passing && !pipeline.started_failing && pipeline.next_finished_build_exists`,
+			ctx:        ctx,
+			want:       true,
+		},
+		{
+			name:       "organization assignments",
+			source:     upstreamBuildConditionSpec,
+			expression: `organization.id == "organization-uuid" && organization.slug == "organization-slug"`,
+			ctx:        ctx,
+			want:       true,
+		},
+	}
+
+	runEvaluateCases(t, tests)
+}
+
+func TestBuildkiteContextNullAssignmentMatrix(t *testing.T) {
+	tests := []evaluateCase{
+		{
+			name:   "build scalar assignments are null without context values",
+			source: upstreamBuildConditionSpec,
+			expression: `build.id == null && build.state == null && build.fixed == null && build.blocked_state == null &&
+				build.source == null && build.source_event == null && build.source_action == null &&
+				build.branch == null && build.tag == null && build.message == null && build.commit == null && build.number == null`,
+			ctx:  Context{EntryPoint: EntryPointBuildCondition},
+			want: true,
+		},
+		{
+			name:   "actor assignments are null without context values",
+			source: upstreamBuildConditionSpec,
+			expression: `build.creator.id == null && build.creator.name == null && build.creator.email == null &&
+				build.creator.teams == null && build.creator.verified == null &&
+				build.author.id == null && build.author.name == null && build.author.email == null && build.author.teams == null`,
+			ctx:  Context{EntryPoint: EntryPointBuildCondition},
+			want: true,
+		},
+		{
+			name:   "pull request assignments are null without context values",
+			source: upstreamBuildConditionSpec,
+			expression: `build.pull_request.id == null && build.pull_request.base_branch == null &&
+				build.pull_request.draft == null && build.pull_request.label == null &&
+				build.pull_request.labels == null && build.pull_request.repository == null &&
+				build.pull_request.repository.fork == null`,
+			ctx:  Context{EntryPoint: EntryPointBuildCondition},
+			want: true,
+		},
+		{
+			name:   "pipeline and organization assignments are null without context values",
+			source: upstreamBuildConditionSpec,
+			expression: `pipeline.id == null && pipeline.slug == null && pipeline.default_branch == null &&
+				pipeline.repository == null && pipeline.started_passing == null &&
+				pipeline.started_failing == null && pipeline.next_finished_build_exists == null &&
+				organization.id == null && organization.slug == null`,
+			ctx:  Context{EntryPoint: EntryPointBuildCondition},
+			want: true,
+		},
+		{
+			name:       "merge queue assignments are null for non merge queue context values",
+			source:     upstreamBuildConditionSpec,
+			expression: `build.merge_queue.base_branch == null && build.merge_queue.base_commit == null`,
+			ctx:        Context{EntryPoint: EntryPointBuildCondition},
+			want:       true,
+		},
+		{
+			name:   "scm assignments are null without context values",
+			source: upstreamBuildConditionSpec,
+			expression: `build.scm.author.name == null && build.scm.author.email == null &&
+				build.scm.committer.name == null && build.scm.committer.email == null`,
+			ctx:  Context{EntryPoint: EntryPointBuildCondition},
+			want: true,
+		},
+	}
+
+	runEvaluateCases(t, tests)
+}
+
+func TestBuildkiteActorContextAssignments(t *testing.T) {
+	tests := []evaluateCase{
+		{
+			name:       "empty team arrays stay distinct from null teams",
+			source:     upstreamBuildConditionSpec,
+			expression: `build.creator.teams == [] && build.author.teams == []`,
+			ctx: Context{
+				EntryPoint: EntryPointBuildCondition,
+				Build: Build{
+					Creator: Actor{Teams: []string{}},
+					Author:  Actor{Teams: []string{}},
+				},
+			},
+			want: true,
+		},
+		{
+			name:       "only caller supplied visible teams are exposed",
+			source:     upstreamBuildConditionSpec,
+			expression: `build.creator.teams == ["created-by-team"] && build.author.teams == ["authored-by-team"] && !(build.author.teams includes "team-secret")`,
+			ctx: Context{
+				EntryPoint: EntryPointBuildCondition,
+				Build: Build{
+					Creator: Actor{Teams: []string{"created-by-team"}},
+					Author:  Actor{Teams: []string{"authored-by-team"}},
+				},
+			},
+			want: true,
+		},
+		{
+			name:       "verified creator and preferred emails are caller supplied context values",
+			source:     upstreamBuildConditionSpec,
+			expression: `build.creator.verified && build.creator.email == "created_by+preferred@email.com" && build.author.email == "authored_by@email.com"`,
+			ctx: Context{
+				EntryPoint: EntryPointBuildCondition,
+				Build: Build{
+					Creator: Actor{
+						Email:    str("created_by+preferred@email.com"),
+						Verified: boolptr(true),
+					},
+					Author: Actor{
+						Email: str("authored_by@email.com"),
+					},
+				},
+			},
+			want: true,
+		},
+	}
+
+	runEvaluateCases(t, tests)
+}
+
 func TestBuildkiteEnvironmentFunctions(t *testing.T) {
 	tests := []evaluateCase{
 		{
