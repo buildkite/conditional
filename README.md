@@ -115,6 +115,27 @@ func main() {
 }
 ```
 
+## Conformance oracle
+
+Committed oracle seed cases can be checked locally with:
+
+```sh
+mise run conformance:check
+```
+
+To compare that corpus with a server-backed oracle, set
+`CONDITIONAL_ORACLE_COMMAND` or pass `--oracle-command`:
+
+```sh
+go run ./cmd/conditional conformance --oracle-command ./server-oracle
+```
+
+The command sends one JSON request on stdin for each case. The oracle should
+write a JSON response such as `{"result":true}` or `{"error_kind":"parse"}`.
+Use `go run ./cmd/conditional conformance --list` to inspect the request shape.
+The oracle corpus is separate from the broader root unit test suite so it can be
+expanded deliberately as server-backed coverage grows.
+
 ## Design
 
 The root package is the public Buildkite API:
