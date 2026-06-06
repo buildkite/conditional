@@ -165,6 +165,16 @@ func TestConditionalRegexValidation(t *testing.T) {
 			source:     upstreamConditionalRegexpModel,
 			expression: `"?" =~ /[(?<=]/`,
 		},
+		{
+			name:       "posix character class keeps outer class open",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"?" =~ /[[:digit:](?<=]/`,
+		},
+		{
+			name:       "regexp comment contents are ignored by feature validator",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"ab" =~ /a(?# (?<= literal)b/`,
+		},
 	}
 
 	runValidateCases(t, tests)

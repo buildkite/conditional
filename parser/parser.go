@@ -287,6 +287,12 @@ func validateRegexp(pattern string) error {
 			continue
 		}
 		if inClass {
+			if ch == '[' && i+1 < len(pattern) && isPOSIXClassMarker(pattern[i+1]) {
+				if end := regexpClassSetEnd(pattern, i); end != -1 {
+					i = end
+				}
+				continue
+			}
 			if ch == ']' {
 				inClass = false
 			}
@@ -298,6 +304,14 @@ func validateRegexp(pattern string) error {
 		}
 
 		if ch == '(' && i+1 < len(pattern) && pattern[i+1] == '?' {
+			if hasRegexpPrefix(pattern, i, "(?#") {
+				end := regexpCommentEnd(pattern, i+3)
+				if end == -1 {
+					return nil
+				}
+				i = end
+				continue
+			}
 			switch {
 			case hasRegexpPrefix(pattern, i, "(?<="):
 				return unsupportedRegexpFeature("lookbehind")
@@ -327,6 +341,40 @@ func validateRegexp(pattern string) error {
 	}
 
 	return nil
+}
+
+func isPOSIXClassMarker(ch byte) bool {
+	return ch == ':' || ch == '.' || ch == '='
+}
+
+func regexpClassSetEnd(pattern string, start int) int {
+	if start+1 >= len(pattern) {
+		return -1
+	}
+	marker := pattern[start+1]
+	for i := start + 2; i+1 < len(pattern); i++ {
+		if pattern[i] == marker && pattern[i+1] == ']' {
+			return i + 1
+		}
+	}
+	return -1
+}
+
+func regexpCommentEnd(pattern string, start int) int {
+	escaped := false
+	for i := start; i < len(pattern); i++ {
+		if escaped {
+			escaped = false
+			continue
+		}
+		switch pattern[i] {
+		case '\\':
+			escaped = true
+		case ')':
+			return i
+		}
+	}
+	return -1
 }
 
 func hasRegexpPrefix(pattern string, offset int, prefix string) bool {
