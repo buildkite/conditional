@@ -956,6 +956,10 @@ Current Slice 6 progress:
 - Source-tagged regex validation tests cover those rejected constructs and guard
   that escaped text and character class contents are not mistaken for regex
   features.
+- Review hardening now covers RE2-style `(?P<name>...)` named captures, POSIX
+  classes followed by literal unsupported-looking tokens, leading literal `]`
+  inside character classes, unsupported-looking tokens inside regex comments,
+  and Ruby-compatible first-`)` regex comment termination.
 
 ### Slice 7: Divergence Removal And Codebase Cleanup
 

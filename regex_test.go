@@ -144,6 +144,12 @@ func TestConditionalRegexValidation(t *testing.T) {
 			wantError:  ErrorKindParse,
 		},
 		{
+			name:       "python named capture fails during parsing",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"group" =~ /(?P<name>group)/`,
+			wantError:  ErrorKindParse,
+		},
+		{
 			name:       "single quote named capture fails during parsing",
 			source:     upstreamConditionalRegexpModel,
 			expression: `"group" =~ /(?'name'group)/`,
@@ -153,6 +159,12 @@ func TestConditionalRegexValidation(t *testing.T) {
 			name:       "conditional regexp fails during parsing",
 			source:     upstreamConditionalRegexpModel,
 			expression: `"a" =~ /(?(1)a|b)/`,
+			wantError:  ErrorKindParse,
+		},
+		{
+			name:       "escaped closing parenthesis ends regexp comment",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"ab" =~ /a(?#\)(?<name>b)/`,
 			wantError:  ErrorKindParse,
 		},
 		{
@@ -171,9 +183,14 @@ func TestConditionalRegexValidation(t *testing.T) {
 			expression: `"?" =~ /[[:digit:](?<=]/`,
 		},
 		{
+			name:       "leading closing bracket stays literal inside character class",
+			source:     upstreamConditionalRegexpModel,
+			expression: `"]" =~ /[](?<=]/`,
+		},
+		{
 			name:       "regexp comment contents are ignored by feature validator",
 			source:     upstreamConditionalRegexpModel,
-			expression: `"ab" =~ /a(?# (?<= literal)b/`,
+			expression: `"ab" =~ /a(?# (?<= literal )b/`,
 		},
 	}
 

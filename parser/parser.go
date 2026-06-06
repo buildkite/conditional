@@ -275,11 +275,15 @@ func regexpOptions(flags string) (regexp2.RegexOptions, error) {
 func validateRegexp(pattern string) error {
 	escaped := false
 	inClass := false
+	classFirst := false
 
 	for i := 0; i < len(pattern); i++ {
 		ch := pattern[i]
 		if escaped {
 			escaped = false
+			if inClass {
+				classFirst = false
+			}
 			continue
 		}
 		if ch == '\\' {
@@ -290,16 +294,24 @@ func validateRegexp(pattern string) error {
 			if ch == '[' && i+1 < len(pattern) && isPOSIXClassMarker(pattern[i+1]) {
 				if end := regexpClassSetEnd(pattern, i); end != -1 {
 					i = end
+					classFirst = false
 				}
 				continue
 			}
 			if ch == ']' {
+				if classFirst {
+					classFirst = false
+					continue
+				}
 				inClass = false
+				continue
 			}
+			classFirst = false
 			continue
 		}
 		if ch == '[' {
 			inClass = true
+			classFirst = true
 			continue
 		}
 
@@ -320,6 +332,8 @@ func validateRegexp(pattern string) error {
 			case hasRegexpPrefix(pattern, i, "(?>"):
 				return unsupportedRegexpFeature("atomic")
 			case hasRegexpPrefix(pattern, i, "(?<"):
+				return unsupportedRegexpFeature("named_ab")
+			case hasRegexpPrefix(pattern, i, "(?P<"):
 				return unsupportedRegexpFeature("named_ab")
 			case hasRegexpPrefix(pattern, i, "(?'"):
 				return unsupportedRegexpFeature("named_sq")
@@ -361,16 +375,8 @@ func regexpClassSetEnd(pattern string, start int) int {
 }
 
 func regexpCommentEnd(pattern string, start int) int {
-	escaped := false
 	for i := start; i < len(pattern); i++ {
-		if escaped {
-			escaped = false
-			continue
-		}
-		switch pattern[i] {
-		case '\\':
-			escaped = true
-		case ')':
+		if pattern[i] == ')' {
 			return i
 		}
 	}
