@@ -1,5 +1,5 @@
 ---
-status: active
+status: landed
 last_reviewed: 2026-06-06
 spec_refs:
   - https://buildkite.com/docs/pipelines/configure/conditionals
@@ -16,12 +16,9 @@ regular-expression validator, Buildkite context builder, and upstream specs in
 `buildkite/buildkite`.
 
 The current repository is now a modern Go module with `mise` tasks, CI wiring,
-core boolean syntax, `null`, `includes`, short-circuiting logical operators, and
-regexp2-based regular expressions. The remaining work is not just adding
-operators. The library needs to become a polished Go package whose public API
-evaluates Buildkite conditionals exactly as the server does, and whose internal
-parser/evaluator packages are clean implementation details rather than a second
-language with compatible-looking syntax.
+a polished root API, source-tagged table-driven tests, internal parser/evaluator
+packages, server-compatible context construction, shell-style substitution,
+ternaries, bounded regexp2 matching, and server-compatible regex validation.
 
 The target outcome is a small, well-tested library that can answer the same
 question as Buildkite: given a conditional expression, a Buildkite evaluation
@@ -33,56 +30,55 @@ examples, but some semantics are only observable from the server evaluator:
 missing values, context-specific variables, type mismatches, dotted identifier
 behavior, shell-style environment substitution, and server-rejected regular
 expression features. The upstream `buildkite/buildkite` repo already has RSpec
-coverage for much of this behavior. This plan therefore treats ported
-table-driven Go conformance tests and an optional server oracle as first-class
-deliverables, not test polish after implementation.
+coverage for much of this behavior. This plan therefore treats source-tagged
+table-driven Go conformance tests, an upstream manifest, and an optional server
+oracle as first-class deliverables, not test polish after implementation.
 
 ## Problem
 
-The library currently evaluates a generic expression language with a generic
-`object.Struct` scope. That is useful scaffolding, but it is not the same thing
-as the server-side Buildkite conditional evaluator.
+When this plan began, the library evaluated a generic expression language with a
+generic `object.Struct` scope. That was useful scaffolding, but it was not the
+same thing as the server-side Buildkite conditional evaluator.
 
-The current repo can parse and evaluate many documented examples:
+The repo could parse and evaluate many documented examples:
 
 - Comparators: `==`, `!=`, `=~`, `!~`.
 - Logical operators: `||`, `&&`.
 - Literals: integers, strings, booleans, and `null`.
 - Parentheses, `!`, dotted object lookup, arrays, and `includes`.
-- Regex literals, escaped `/`, `i` flags, RE2 compatibility mode, and bounded
-  regexp2 matching.
+- Regex literals, escaped `/`, `i` flags, and bounded regexp matching.
 
-Some of that current behavior is a useful foundation; some is divergent from
-the server and should be removed from the Buildkite surface. The important gaps
-are:
+Some of that behavior was a useful foundation; some was divergent from the
+server and needed to be removed from the Buildkite surface. These were the
+important gaps the delivery slices addressed:
 
 - The server grammar treats dotted names as flat identifiers. `build.env` is a
   function name and `build.branch` is an assigned variable name. The local
   object-lookup model is not enough for exact parity.
 - The server parser supports ternary expressions and shell-style environment
   substitution forms such as `$branch`, `${branch:-fallback}`, and substring
-  operations. Those are currently missing locally.
+  operations.
 - The docs define many variables under `build`, `pipeline`, `organization`, and
-  notification-only `step`, but this repo has no Buildkite-specific context
+  notification-only `step`, but the repo had no Buildkite-specific context
   builder or availability rules.
 - The docs distinguish pipeline-level, step-level, build notification, and step
-  notification conditionals. The current evaluator has no context kind, so it
-  cannot reject or null-fill variables based on where the conditional runs.
+  notification conditionals. The evaluator needed an explicit context kind so it
+  could reject or null-fill variables based on where the conditional runs.
 - Missing documented nullable values need Buildkite-compatible behavior. Today a
-  missing property is an error, while many documented variables should be `null`
-  in specific contexts.
-- The library has no stable root package API that consistently handles parser
+  missing property was an error, while many documented variables should be
+  `null` in specific contexts.
+- The library needed a stable root package API that consistently handles parser
   errors, evaluator errors, validation errors, and non-boolean final results.
-- The local regex engine currently accepts some syntax the server rejects. Exact
+- The local regex engine accepted some syntax the server rejects. Exact
   parity requires the Go library to reject server-rejected regex features even
   when regexp2 can evaluate them.
-- The existing `@>` operator and any other non-server syntax should be removed
+- The existing `@>` operator and any other non-server syntax needed removal
   from the Buildkite language surface instead of preserved as compatibility
   extensions.
-- There is no local server-derived conformance corpus yet. The upstream
-  `buildkite/buildkite` specs should be ported before inventing bespoke edge
-  cases, otherwise each PR risks matching the docs examples but drifting from
-  production behavior.
+- Server-derived conformance evidence must stay durable. The upstream
+  `buildkite/buildkite` specs are ported or accounted for in the manifest, and
+  future parity work should continue adding source-tagged table cases before
+  inventing bespoke edge cases.
 
 ## Goals
 
@@ -365,19 +361,25 @@ end in exactly one state: `ported`, `blocked`, `intentionally_excluded`, or
 `superseded`. A slice should not claim parity for a feature until every relevant
 upstream group is accounted for.
 
-Initial manifest:
+Current manifest:
+
+Some upstream RSpec files mix server conditional behavior with assertions about
+the Ruby parser's internal AST shape, generic test-only functions, notification
+model construction, or exact wording. Those groups are marked separately in the
+status text so expression-language parity is not blocked on behavior this Go
+library deliberately does not expose.
 
 | Upstream source | Groups to account for | Current status | Required status before parity claim |
 | --- | --- | --- | --- |
-| `spec/models/conditional/parser_spec.rb` | friendly errors, comments, objects/properties, function calls, complex strings, simple expressions, operand precedence, negation, token positions | `blocked`: Slice 3 ports flat dotted identifiers/functions, ternary precedence, shell expansion operands, malformed dotted-name rejection, and parser-level rejection of `@>`; Slice 4 ports server string escape decoding for single-quoted and double-quoted strings plus quote-aware shell fallback scanning. Generic custom test functions are superseded by concrete Buildkite functions in the root API. Exact friendly messages and token positions remain follow-up parser work | `ported` or `intentionally_excluded` with reason |
-| `spec/models/conditional/evaluator_spec.rb` | booleans, nulls, arrays, regexes, string comparisons, ternaries, variables/enums, shell substitutions | `blocked`: Slice 4 ports regex includes, null regex/includes semantics, shell substitution evaluation, double-quoted interpolation, server string escapes, shell fallback string grammar, enum literal validation, logical type-checking before runtime short-circuiting, enum comparison asymmetry, array equality/null comparisons, Ruby-style falsey runtime behavior for typed nil booleans, and representative type-checker rejection cases. Generic custom test functions are superseded by the root API's concrete `env` and `build.env` functions | `ported` |
-| `spec/models/conditional/variable_spec.rb` | typed variables, nullable typed values, enums, lazy values | `blocked`: Slice 4 ports the server's declared-type behavior for nil values: typed nil strings, booleans, arrays, and enums type-check as their declared type rather than nullable unions. The Ruby lazy-variable API is superseded by Go context fields and derived helpers; exhaustive field coverage remains Slice 5 work | `ported` or `superseded` by Go type/context tests |
-| `spec/models/build/condition_spec.rb` | `env()`, `build.env()`, build/pipeline/org fields, webhook fields, pull request label, project env merge, validation, context construction | `blocked`: Slice 2 seeds source-tagged root cases for representative `env()`, `build.env()`, organization, pipeline, webhook, pull request label, project env merge, and validation behavior; Slice 5 adds server-style static env validation for typos, unsupported built-ins, invalid names, and names starting with `$`, plus full-data, nil-data, SCM, merge queue, visible-team, empty-team, verified-creator, and preferred-email context matrix coverage through the public API; remaining context work is exhaustive entrypoint availability and any server cases not yet accounted for | `ported` |
-| `spec/validators/build_condition_validator_spec.rb` | blank/nil validation, invalid conditionals, step-variable validation option | `blocked`: Slice 2 ports blank string, invalid expression, step-variable rejection, and step-option acceptance through root validation; nil validation is not representable in the string API | `ported` or `intentionally_excluded` with reason |
-| `spec/models/build/notification_spec.rb` | no conditional, false on unmet condition, false on parser/evaluation errors | `blocked`: Slice 2 ports blank/no-condition equivalent, false-on-unmet condition, false-on-parse-error, and false-on-unavailable-step-variable behavior; full notification parsing/config propagation remains out of scope | `ported` |
-| `spec/models/step/notification_spec.rb` | step variables and false-on-error notification behavior | `blocked`: Slice 2 ports step key/id checks and false-on-parse-error through the step notification entrypoint; full step notification model behavior remains out of scope | `ported` |
-| `spec/models/build/pipeline_config/build_notifications_spec.rb` | config parsing and notification conditional propagation | `blocked`: config parsing is not in the current slice | `blocked` until config parsing is in scope, or `intentionally_excluded` with reason |
-| `spec/models/build/pipeline_config/step_notifications_spec.rb` | config parsing and step notification conditional propagation | `blocked`: config parsing is not in the current slice | `blocked` until config parsing is in scope, or `intentionally_excluded` with reason |
+| `spec/models/conditional/parser_spec.rb` | friendly errors, comments, objects/properties, function calls, complex strings, simple expressions, operand precedence, negation, token positions | `ported` for Buildkite grammar behavior: comments, flat dotted identifiers/functions, strings, arrays, regex literals, shell expansion, ternaries, precedence, negation, malformed dotted names, and parser-level `@>` rejection are covered by source-tagged root and parser tests. Generic custom test functions are `superseded` by concrete Buildkite functions in the root API. Exact Ruby AST snapshots, byte-for-byte friendly messages, and token-position assertions are `intentionally_excluded`; Go tests assert error categories and source-sensitive parser behavior instead. | `ported`, `superseded`, or `intentionally_excluded` with reason |
+| `spec/models/conditional/evaluator_spec.rb` | booleans, nulls, arrays, regexes, string comparisons, ternaries, variables/enums, shell substitutions | `ported` for server evaluation semantics through the root Buildkite API: equality, regex matching, `includes`, logical operators, ternaries, typed nil behavior, enum validation, array/null comparisons, shell substitutions, and regexp validation have source-tagged table coverage. Generic `starts_with`, `return_null`, and camelCase test variables are `superseded` by Buildkite context variables plus `env` and `build.env`. | `ported` |
+| `spec/models/conditional/variable_spec.rb` | typed variables, nullable typed values, enums, lazy values | `superseded`: Go context/type tests cover declared-type behavior for nil strings, booleans, arrays, and enums, plus derived lazy values such as source event/action and pull request label through concrete context fields. The Ruby lazy-variable object API is not part of the Go public surface. | `ported` or `superseded` by Go type/context tests |
+| `spec/models/build/condition_spec.rb` | `env()`, `build.env()`, build/pipeline/org fields, webhook fields, pull request label, project env merge, validation, context construction | `ported`: root tests cover Buildkite assignments, nil/presence behavior, project/build env precedence, `env()` and `build.env()`, static and dynamic env validation, webhook source event/action, pull request label, merge queue values, step availability, notification false-on-error behavior, server enum values, and the full `Build::PipelineEnvironment::SUPPORTED` allowlist from `origin/main` at `e3b8a46f315`. Database-backed facts such as visible teams and preferred creator email are caller-supplied in `Context`, matching the plan's API boundary. | `ported` |
+| `spec/validators/build_condition_validator_spec.rb` | blank/nil validation, invalid conditionals, step-variable validation option | `ported` for string validation: blank strings are valid, invalid expressions are rejected, step variables require the step-enabled entrypoint, and the step entrypoint accepts them. Nil validation is `intentionally_excluded` because the Go API accepts a non-nil string. | `ported` or `intentionally_excluded` with reason |
+| `spec/models/build/notification_spec.rb` | no conditional, false on unmet condition, false on parser/evaluation errors | `ported` for conditional deliverability: blank/no condition is true, unmet conditions are false, and parser/validation/evaluation errors return false through `EntryPointBuildNotification`. Notification model construction is outside this expression library. | `ported` |
+| `spec/models/step/notification_spec.rb` | step variables and false-on-error notification behavior | `ported` for conditional deliverability: step variables are available through `EntryPointStepNotification`, unmet conditions are false, and parser/validation/evaluation errors return false. STI, GraphQL id, and notification subclass mapping assertions are outside this expression library. | `ported` |
+| `spec/models/build/pipeline_config/build_notifications_spec.rb` | config parsing and notification conditional propagation | `intentionally_excluded`: this repository does not parse pipeline YAML or construct notification models. The conditional string semantics are covered through the root validation and build-notification entrypoint tests. | `intentionally_excluded` |
+| `spec/models/build/pipeline_config/step_notifications_spec.rb` | config parsing and step notification conditional propagation | `intentionally_excluded`: this repository does not parse pipeline YAML or construct notification models. Step-conditional string semantics are covered through the root validation and step-notification entrypoint tests. | `intentionally_excluded` |
 
 The manifest can live in this plan while work is small. If it becomes too large,
 move it to `docs/plans/buildkite-conditionals-upstream-manifest.md` and link it
@@ -390,7 +392,7 @@ from this plan.
 - Modern Go structure is in place: `go.mod`, `cmd/conditional`, `mise.toml`, and
   `.buildkite/pipeline.yml`.
 - `mise run check` runs `go vet`, `go build`, `go test`, and `staticcheck`.
-- Core docs syntax is mostly implemented:
+- Core docs syntax is implemented:
   - `==`, `!=`, `=~`, `!~`
   - `||`, `&&`
   - integers, strings, booleans, `null`
@@ -398,11 +400,12 @@ from this plan.
   - `includes`
   - arrays
   - comments
-  - regex literals with escaped `/`, `i` flags, regexp2, RE2 compatibility mode,
-    and match timeout
+  - regex literals with escaped `/`, `i` flags, regexp2, server-compatible
+    validation, and match timeout
 - Parser rejects trailing tokens after a complete expression.
 - Lexer handles unterminated regex literals without panicking.
-- README documents the current regex interpolation boundary.
+- README documents the root API, entrypoints, supported syntax, nullable values,
+  and fail-closed behavior.
 - Slice 1 landed the root package API, server-derived entrypoint model, public
   context structs, typed error categories, root smoke tests, and package
   migration map.
@@ -426,29 +429,35 @@ from this plan.
 - Runtime `env()` and `build.env()` calls now enforce the server's blank-name
   and `BUILDKITE_*` allowlist checks after interpolation, so dynamic names fail
   closed the same way static literal names do.
-- The remaining work is hardening and optional server-oracle support, not a
-  known parser, evaluator, regex, or context implementation gap.
+- Slice 9 reconciled the upstream manifest and server environment allowlist, so
+  there is no known parser, evaluator, regex, context, or documented env
+  allowlist implementation gap.
 
 ### Active Slice
 
-- Slices 1 through 7 have landed. The active work is parity hardening: keep the
-  plan aligned with merged code, fill test-only gaps found by docs or upstream
-  spec audits, and avoid reopening implemented behavior without new evidence.
-- The current hardening slice adds explicit root-package coverage for every
-  `BUILDKITE_*` key listed in the public `build.env()` docs. The library already
-  accepted those names; the new table tests make that contract durable for both
-  `env()` and `build.env()`, including GitHub deployment, check-run, comment,
-  release, and review variables supplied through `BuildEnv`.
-- Slice 8 has landed as an optional oracle command. Default CI still runs only
-  deterministic Go tests; server-backed comparison is available through
-  `mise run conformance:check` when `CONDITIONAL_ORACLE_COMMAND` is configured.
+- Slices 1 through 9 have landed. The plan is complete for the public Go
+  expression library surface: remaining work is upstream drift monitoring,
+  optional private oracle expansion, or a separate plan for pipeline YAML
+  notification parsing if this repository ever takes that scope.
+- Slice 9 reconciles the upstream manifest against `buildkite/buildkite`
+  `origin/main` at `e3b8a46f315` and adds exact-list test coverage for the
+  server's `Build::PipelineEnvironment::SUPPORTED` allowlist. That hardens
+  `env()` and `build.env()` validation for server-supported names that were
+  implemented and value-tested but missing from the allowlist validation table:
+  `BUILDKITE_TRIGGERED_FROM_BUILD_JOB_ID`,
+  `BUILDKITE_PULL_REQUEST_USING_MERGE_REFSPEC`, and
+  `BUILDKITE_GIT_DIFF_BASE`. The audit also caught that
+  `BUILDKITE_PULL_REQUEST_LABELS` is runtime-derived by
+  `Build::PipelineEnvironment#[]` but is not in the static `SUPPORTED` set, so
+  literal `build.env("BUILDKITE_PULL_REQUEST_LABELS")` validation now fails like
+  the server while dynamic lookup can still derive the labels value.
 
 ### Known Gaps
 
 | Area | Current Behavior | Required Direction |
 | --- | --- | --- |
 | Dotted names | Parser and evaluator internals now use flat dotted identifiers for server variables; nested dotted lookup fallback has been removed, and implementation packages are under `internal/`. | Keep flat dotted identifier/function conformance coverage as new server variables are added. |
-| `build.env()` | `build.env("NAME")` parses as a flat function identifier, type-checks with the server's string return token type, evaluates to `null` for absent variables, and fails closed for blank or unsupported dynamic `BUILDKITE_*` names. Static validation accepts every documented `BUILDKITE_*` key for both `env()` and `build.env()`. | Keep the docs allowlist test in sync when Buildkite publishes new conditional env keys. |
+| `build.env()` | `build.env("NAME")` parses as a flat function identifier, type-checks with the server's string return token type, evaluates to `null` for absent variables, and fails closed for blank or unsupported dynamic `BUILDKITE_*` names. Static validation accepts every server-supported `BUILDKITE_*` key for both `env()` and `build.env()`. | Keep the server allowlist test in sync when Buildkite publishes new conditional env keys. |
 | Ternary syntax | Ternaries parse with server precedence, evaluate lazily, use Ruby truthiness for nil runtime conditions, and type-check branch compatibility without local nullable-union narrowing. | Keep upstream ternary cases in the conformance tables as new server specs are found. |
 | Shell substitution | Shell expansion operands, double-quoted interpolation, server string escapes, and quoted fallback strings evaluate for the upstream set/unset/empty/default/alternate/required/substring matrix and representative fallback grammar cases. | Keep substitution grammar cases source-tagged in root and parser tests. |
 | Scope | Public callers pass `Context`; the root package builds an internal flat assignment table. | Keep server-style assignment coverage as new conditional variables are added upstream. |
@@ -457,8 +466,8 @@ from this plan.
 | Final result | Root `Validate`/`Evaluate` now type-check for a boolean final result; implementation-only `Eval` is internal and still returns `object.Object`. | Keep root `(bool, error)` as the supported Buildkite surface. |
 | Regex syntax | regexp2 is bounded by a match timeout and guarded by a server-compatible validator for flags and unsupported constructs. | Keep the accepted/rejected regex matrix aligned with `Conditional::Regexp` as upstream changes. |
 | Divergent operators | `@>` no longer tokenizes as a Buildkite parser operator, and the dead token/parser/root-validation compatibility artifacts have been removed. | Keep parser/root divergence tests so local-only syntax stays rejected. |
-| Type mismatch semantics | Core equality, regex matching, `includes`, `!`, logical, ternary, enum, null, array comparison, and concrete Buildkite function cases now use server-derived type-checking behavior. | Finish exact error category coverage and the remaining context-driven function cases. |
-| Conformance | Root package tests are now split into source-tagged table-driven files for syntax, evaluation, regex, context, and root API error behavior. The tables seed docs and upstream spec coverage but do not yet port every blocked upstream group. | Expand the tables in each implementation slice until every manifest group is `ported`, `superseded`, or `intentionally_excluded` before claiming parity. |
+| Type mismatch semantics | Core equality, regex matching, `includes`, `!`, logical, ternary, enum, null, array comparison, and concrete Buildkite function cases now use server-derived type-checking behavior. | Keep error category coverage stable as upstream adds syntax or variables. Byte-for-byte Ruby messages remain deferred. |
+| Conformance | Root package tests are split into source-tagged table-driven files for syntax, evaluation, regex, context, env allowlists, and root API error behavior. The upstream manifest now accounts for every relevant group as `ported`, `superseded`, or `intentionally_excluded`. | Keep the source-tagged tables and optional oracle corpus in sync with upstream changes. |
 
 ## Server Syntax And Context Surface To Cover
 
@@ -714,14 +723,14 @@ Current Slice 2 progress:
   feature branch regex, tag presence, tag regex via variable and `build.env()`,
   case-insensitive message regex, scheduled source, custom env, creator teams,
   draft pull requests, and merge queue base branch.
-- Docs examples that encode YAML/env-substitution escaping for `$` anchors are
-  recorded as blocked until Slice 3 implements shell-style substitution; the
-  current regex tests separately assert raw `$` anchors and escaped literal
-  dollars so the parser does not conflate those semantics.
+- Docs examples that encode YAML/env-substitution escaping for `$` anchors were
+  seeded here and then covered by the later shell-substitution and regex slices.
+  Regex tests separately assert raw `$` anchors and escaped literal dollars so
+  the parser does not conflate those semantics.
 - Representative upstream cases are ported from parser, evaluator,
   `Build::Condition`, build condition validator, build notification, and step
-  notification specs. The manifest remains `blocked` for every upstream group
-  that still needs feature work rather than skipped tests.
+  notification specs. The manifest now accounts for each upstream group as
+  `ported`, `superseded`, or `intentionally_excluded`.
 
 Status: landed.
 
@@ -749,9 +758,9 @@ Current Slice 3 progress:
 - Ternary parsing and lazy evaluation are implemented.
 - Shell expansion operands are tokenized and parsed, including nested brace
   forms used by substring expressions.
-- Double-quoted string interpolation remains blocked until Slice 4's environment
-  substitution evaluator. That evaluator needs to distinguish unset, null, and
-  empty values and cannot be represented by the current `StringLiteral` alone.
+- Double-quoted string interpolation was completed in Slice 4, where the
+  evaluator gained the unset/null/empty distinctions needed for server-style
+  substitution semantics.
 - `@>` is rejected by the parser rather than by root validation.
 
 Status: landed.
@@ -1019,6 +1028,41 @@ Current Slice 8 progress:
 - The oracle corpus is intentionally separate from the broader root unit test
   tables for now. Future hardening can migrate more of those source-tagged root
   cases into `internal/conformance` as server-backed coverage grows.
+
+Status: landed.
+
+### Slice 9: Manifest Reconciliation And Server Allowlist Coverage
+
+Audit the completed plan against current upstream server specs and remove stale
+`blocked` manifest rows that either landed in earlier slices or are deliberately
+outside this expression library.
+
+Definition of done:
+
+- Inspect `buildkite/buildkite` `origin/main` for the server conditional specs,
+  `Build::Condition`, and `Build::PipelineEnvironment`.
+- Mark every manifest group as `ported`, `superseded`, or
+  `intentionally_excluded` with a reason.
+- Add any missing high-signal conformance coverage found by the audit.
+- Keep pipeline YAML notification parsing outside this plan unless the repo
+  grows a YAML loader.
+
+Current Slice 9 progress:
+
+- Audited upstream `buildkite/buildkite` `origin/main` at `e3b8a46f315`.
+- Reconciled the manifest so expression-language behavior is separated from
+  Ruby AST snapshots, exact friendly messages, generic test-only functions,
+  notification model construction, and pipeline YAML parsing.
+- Added exact-list test coverage for the server's
+  `Build::PipelineEnvironment::SUPPORTED` allowlist, including
+  `BUILDKITE_TRIGGERED_FROM_BUILD_JOB_ID`,
+  `BUILDKITE_PULL_REQUEST_USING_MERGE_REFSPEC`, and
+  `BUILDKITE_GIT_DIFF_BASE`.
+- Reordered the Go allowlist to match the server model order, preserving stable
+  suggestion behavior for unsupported `BUILDKITE_*` names.
+- Split static validation from runtime lookup for
+  `BUILDKITE_PULL_REQUEST_LABELS`, matching the server's `SUPPORTED` versus
+  `#[]` behavior.
 
 Status: landed.
 

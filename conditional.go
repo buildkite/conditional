@@ -265,7 +265,7 @@ func envNameArg(args []object.Object) (string, *object.Error) {
 	if name.Value == "" {
 		return "", &object.Error{Message: "env argument should be an environment variable name"}
 	}
-	if unsupportedBuildkiteEnv(name.Value) {
+	if unsupportedRuntimeBuildkiteEnv(name.Value) {
 		return "", &object.Error{Message: unsupportedBuildkiteEnvMessage(name.Value)}
 	}
 	return name.Value, nil

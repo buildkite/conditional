@@ -25,7 +25,6 @@ var supportedBuildkiteEnvNames = []string{
 	"BUILDKITE_PULL_REQUEST",
 	"BUILDKITE_PULL_REQUEST_BASE_BRANCH",
 	"BUILDKITE_PULL_REQUEST_REPO",
-	"BUILDKITE_PULL_REQUEST_LABELS",
 	"BUILDKITE_PULL_REQUEST_USING_MERGE_REFSPEC",
 	"BUILDKITE_MERGE_QUEUE_BASE_BRANCH",
 	"BUILDKITE_MERGE_QUEUE_BASE_COMMIT",
@@ -49,6 +48,11 @@ var supportedBuildkiteEnvNames = []string{
 }
 
 var supportedBuildkiteEnv = stringSet(supportedBuildkiteEnvNames)
+var runtimeSupportedBuildkiteEnv = func() map[string]struct{} {
+	values := stringSet(supportedBuildkiteEnvNames)
+	values["BUILDKITE_PULL_REQUEST_LABELS"] = struct{}{}
+	return values
+}()
 
 func stringSet(values []string) map[string]struct{} {
 	out := make(map[string]struct{}, len(values))
@@ -59,10 +63,18 @@ func stringSet(values []string) map[string]struct{} {
 }
 
 func unsupportedBuildkiteEnv(key string) bool {
+	return unsupportedBuildkiteEnvIn(key, supportedBuildkiteEnv)
+}
+
+func unsupportedRuntimeBuildkiteEnv(key string) bool {
+	return unsupportedBuildkiteEnvIn(key, runtimeSupportedBuildkiteEnv)
+}
+
+func unsupportedBuildkiteEnvIn(key string, supported map[string]struct{}) bool {
 	if !strings.HasPrefix(key, "BUILDKITE_") {
 		return false
 	}
-	_, ok := supportedBuildkiteEnv[key]
+	_, ok := supported[key]
 	return !ok
 }
 
