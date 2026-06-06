@@ -662,7 +662,6 @@ func TestBuildkiteEnvironmentFunctions(t *testing.T) {
 				build.env("BUILDKITE_PULL_REQUEST") == "123" &&
 				build.env("BUILDKITE_PULL_REQUEST_BASE_BRANCH") == "main" &&
 				build.env("BUILDKITE_PULL_REQUEST_REPO") == "git@github.com:acme/repo.git" &&
-				build.env("BUILDKITE_PULL_REQUEST_LABELS") == "bug,deploy" &&
 				build.env("BUILDKITE_MERGE_QUEUE_BASE_BRANCH") == "main" &&
 				build.env("BUILDKITE_MERGE_QUEUE_BASE_COMMIT") == "def456"`,
 			ctx: Context{
@@ -702,10 +701,22 @@ func TestBuildkiteEnvironmentFunctions(t *testing.T) {
 				build.env("BUILDKITE_TRIGGERED_FROM_BUILD_JOB_ID") == "" &&
 				build.env("BUILDKITE_REBUILT_FROM_BUILD_ID") == "" &&
 				build.env("BUILDKITE_REBUILT_FROM_BUILD_NUMBER") == "" &&
-				build.env("BUILDKITE_PULL_REQUEST_LABELS") == "" &&
 				build.env("BUILDKITE_PULL_REQUEST_USING_MERGE_REFSPEC") == "" &&
 				build.env("BUILDKITE_GIT_DIFF_BASE") == ""`,
 			ctx:  Context{EntryPoint: EntryPointBuildCondition},
+			want: true,
+		},
+		{
+			name:       "pull request labels are runtime derived for dynamic env names",
+			source:     upstreamBuildPipelineEnvModel,
+			expression: `build.env(env("LABELS_KEY")) == "bug,deploy"`,
+			ctx: Context{
+				EntryPoint: EntryPointBuildCondition,
+				Build: Build{
+					PullRequest: PullRequest{Labels: []string{"bug", "deploy"}},
+				},
+				BuildEnv: map[string]string{"LABELS_KEY": "BUILDKITE_PULL_REQUEST_LABELS"},
+			},
 			want: true,
 		},
 		{
@@ -899,6 +910,17 @@ func TestBuildkiteContextValidation(t *testing.T) {
 			},
 		},
 		{
+			name:       "literal runtime-only pull request labels env is rejected",
+			source:     upstreamBuildPipelineEnvModel,
+			expression: `build.env("BUILDKITE_PULL_REQUEST_LABELS") == null`,
+			ctx:        Context{EntryPoint: EntryPointBuildCondition},
+			wantError:  ErrorKindValidation,
+			wantMessageContains: []string{
+				`"BUILDKITE_PULL_REQUEST_LABELS" is not a valid environment variable`,
+				`did you mean "BUILDKITE_PULL_REQUEST"`,
+			},
+		},
+		{
 			name:       "literal Buildkite env typo suggests supported name",
 			source:     upstreamBuildConditionSpec,
 			expression: `env("BUILDKITE_MESSGE") == "blah"`,
@@ -965,11 +987,6 @@ func TestBuildkiteEnvSuggestions(t *testing.T) {
 			name:  "github review typo picks first server suggestion",
 			input: "BUILDKITE_GITHUB_REVIE_STATE",
 			want:  "BUILDKITE_GITHUB_REVIEW_STATE",
-		},
-		{
-			name:  "pull request label singular picks labels",
-			input: "BUILDKITE_PULL_REQUEST_LABEL",
-			want:  "BUILDKITE_PULL_REQUEST_LABELS",
 		},
 	}
 
