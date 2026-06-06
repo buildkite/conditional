@@ -166,7 +166,7 @@ func TestFlatDottedIdentifier(t *testing.T) {
 	}
 }
 
-func TestNestedDottedIdentifierFallback(t *testing.T) {
+func TestNestedDottedIdentifierIsNotResolved(t *testing.T) {
 	scope := object.Struct{
 		"build": object.Struct{
 			"message": &object.String{Value: "deploy"},
@@ -174,10 +174,16 @@ func TestNestedDottedIdentifierFallback(t *testing.T) {
 	}
 
 	evaluated := testEvalWithScope(`build.message == "deploy"`, scope)
-	testBooleanObject(t, evaluated, true)
+	result, ok := evaluated.(*object.Error)
+	if !ok {
+		t.Fatalf("result is not an error. got=%T (%+v)", evaluated, evaluated)
+	}
+	if result.Message != `identifier not found: build.message` {
+		t.Fatalf("bad error message: %v", result.Message)
+	}
 }
 
-func TestFlatDottedIdentifierTakesPrecedence(t *testing.T) {
+func TestFlatDottedIdentifierIgnoresNestedStructs(t *testing.T) {
 	scope := object.Struct{
 		"build.message": &object.String{Value: "flat"},
 		"build": object.Struct{
@@ -202,7 +208,7 @@ func TestFlatDottedIdentifierFailsOnMissingAssignment(t *testing.T) {
 	}
 }
 
-func TestNestedDottedFunctionFallback(t *testing.T) {
+func TestNestedDottedFunctionIsNotResolved(t *testing.T) {
 	scope := object.Struct{
 		"build": object.Struct{
 			"env": object.Function(func(args []object.Object) object.Object {
@@ -212,10 +218,16 @@ func TestNestedDottedFunctionFallback(t *testing.T) {
 	}
 
 	evaluated := testEvalWithScope(`build.env("FOO") == "from-nested"`, scope)
-	testBooleanObject(t, evaluated, true)
+	result, ok := evaluated.(*object.Error)
+	if !ok {
+		t.Fatalf("result is not an error. got=%T (%+v)", evaluated, evaluated)
+	}
+	if result.Message != `function not defined: build.env` {
+		t.Fatalf("bad error message: %v", result.Message)
+	}
 }
 
-func TestContainsOperator(t *testing.T) {
+func TestIncludesOperator(t *testing.T) {
 	tests := []struct {
 		input    string
 		expected bool
@@ -230,7 +242,7 @@ func TestContainsOperator(t *testing.T) {
 	}
 }
 
-func TestContainsOperatorWithScopeArray(t *testing.T) {
+func TestIncludesOperatorWithScopeArray(t *testing.T) {
 	scope := object.Struct{
 		"build.creator.teams": &object.Array{Elements: []object.Object{
 			&object.String{Value: "deploy"},

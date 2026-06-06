@@ -480,7 +480,7 @@ from this plan.
 
 | Area | Current Behavior | Required Direction |
 | --- | --- | --- |
-| Dotted names | Parser and evaluator internals now use flat dotted identifiers for server variables, and implementation packages are under `internal/`. | Finish auditing any remaining nested object lookup assumptions behind the root API. |
+| Dotted names | Parser and evaluator internals now use flat dotted identifiers for server variables; nested dotted lookup fallback has been removed, and implementation packages are under `internal/`. | Keep flat dotted identifier/function conformance coverage as new server variables are added. |
 | `build.env()` | `build.env("NAME")` parses as a flat function identifier, type-checks with the server's string return token type, evaluates to `null` for absent variables, and fails closed for blank or unsupported dynamic `BUILDKITE_*` names. | Expand validator and conformance coverage for the full server env matrix in Slice 5. |
 | Ternary syntax | Ternaries parse with server precedence, evaluate lazily, use Ruby truthiness for nil runtime conditions, and type-check branch compatibility without local nullable-union narrowing. | Expand conformance coverage for every upstream ternary type-checker case before marking Slice 4 complete. |
 | Shell substitution | Shell expansion operands, double-quoted interpolation, server string escapes, and quoted fallback strings evaluate for the upstream set/unset/empty/default/alternate/required/substring matrix and representative fallback grammar cases. | Run a final upstream parser/evaluator audit before marking every shell substitution group accounted for. |
@@ -994,6 +994,9 @@ Current Slice 7 progress:
 - Moved implementation packages under `internal/`, including `ast`, `evaluator`,
   `lexer`, `object`, `parser`, `repl`, and `token`, so the root package is the
   supported public Buildkite API.
+- Removed nested dotted lookup fallback from the internal evaluator and root
+  scope builder. Buildkite names now resolve through flat assignment keys such
+  as `build.message` and `build.env`.
 
 ### Slice 8: Optional Server Oracle
 
