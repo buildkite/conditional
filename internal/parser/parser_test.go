@@ -2,10 +2,13 @@ package parser
 
 import (
 	"fmt"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/buildkite/conditional/internal/ast"
 	"github.com/buildkite/conditional/internal/lexer"
+	"github.com/dlclark/regexp2"
 )
 
 func TestIntegerLiteralExpression(t *testing.T) {
@@ -71,6 +74,33 @@ func TestRegexpExpression(t *testing.T) {
 	}
 	if literal.Regexp.MatchTimeout != regexpMatchTimeout {
 		t.Errorf("regexp.MatchTimeout not %v. got=%v", regexpMatchTimeout, literal.Regexp.MatchTimeout)
+	}
+}
+
+func TestRegexpMatchTimeoutBoundsBacktracking(t *testing.T) {
+	l := lexer.New(`/(a+)+$/`)
+	p := New(l)
+	expr := p.Parse()
+	checkParserErrors(t, p)
+
+	literal, ok := expr.(*ast.Regexp)
+	if !ok {
+		t.Fatalf("exp not *ast.Regexp. got=%T", expr)
+	}
+
+	regexp2.SetTimeoutCheckPeriod(time.Millisecond)
+	t.Cleanup(func() {
+		regexp2.SetTimeoutCheckPeriod(regexp2.DefaultClockPeriod)
+		regexp2.StopTimeoutClock()
+	})
+
+	literal.Regexp.MatchTimeout = 5 * time.Millisecond
+	_, err := literal.Regexp.MatchString(strings.Repeat("a", 2000) + "!")
+	if err == nil {
+		t.Fatal("expected timeout error")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "timeout") {
+		t.Fatalf("expected timeout error, got %v", err)
 	}
 }
 
