@@ -61,6 +61,8 @@ func evaluate(expression string, ctx Context) (bool, error) {
 	switch result := result.(type) {
 	case *object.Boolean:
 		return result.Value, nil
+	case *object.Null:
+		return false, nil
 	case *object.Error:
 		return false, &Error{Kind: ErrorKindEvaluation, Message: result.Message}
 	default:
@@ -118,9 +120,6 @@ func validateEnvCalls(expr ast.Expression) error {
 	case *ast.InfixExpression:
 		if err := validateEnvCalls(expr.Left); err != nil {
 			return err
-		}
-		if logicalExpressionShortCircuits(expr) {
-			return nil
 		}
 		return validateEnvCalls(expr.Right)
 	case *ast.CallExpression:
@@ -185,9 +184,6 @@ func validateOperators(expr ast.Expression) error {
 		}
 		if err := validateOperators(expr.Left); err != nil {
 			return err
-		}
-		if logicalExpressionShortCircuits(expr) {
-			return nil
 		}
 		return validateOperators(expr.Right)
 	case *ast.CallExpression:

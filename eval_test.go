@@ -73,6 +73,30 @@ func TestConditionalEvaluationSemantics(t *testing.T) {
 			want:       false,
 		},
 		{
+			name:       "array equality evaluates matching arrays",
+			source:     upstreamParserSpec,
+			expression: `["a"] == ["a"]`,
+			want:       true,
+		},
+		{
+			name:       "array null equality evaluates false",
+			source:     upstreamParserSpec,
+			expression: `["a"] == null`,
+			want:       false,
+		},
+		{
+			name:       "null array equality evaluates false",
+			source:     upstreamParserSpec,
+			expression: `null == ["a"]`,
+			want:       false,
+		},
+		{
+			name:       "nil array variable compares equal to null",
+			source:     upstreamConditionalVariableSpec,
+			expression: `null == build.creator.teams`,
+			want:       true,
+		},
+		{
 			name:       "array includes regex",
 			source:     upstreamEvaluatorSpec,
 			expression: `build.creator.teams includes /dep/`,
@@ -84,22 +108,22 @@ func TestConditionalEvaluationSemantics(t *testing.T) {
 			want: true,
 		},
 		{
-			name:       "array includes enum string variable",
-			source:     docsConditionalsSource,
+			name:       "array includes rejects enum variable",
+			source:     upstreamParserSpec,
 			expression: `["passed", "failed"] includes build.state`,
 			ctx: Context{
 				Build: Build{State: str("passed")},
 			},
-			want: true,
+			wantError: ErrorKindValidation,
 		},
 		{
-			name:       "array literal accepts enum string variable",
-			source:     upstreamEvaluatorSpec,
+			name:       "array literal rejects enum variable element",
+			source:     upstreamParserSpec,
 			expression: `[build.state] includes "passed"`,
 			ctx: Context{
 				Build: Build{State: str("passed")},
 			},
-			want: true,
+			wantError: ErrorKindValidation,
 		},
 		{
 			name:       "documented started failing build state",
@@ -130,22 +154,22 @@ func TestConditionalEvaluationSemantics(t *testing.T) {
 			want: true,
 		},
 		{
-			name:       "enum comparison allows same enum variables",
+			name:       "enum comparison rejects same enum variables",
 			source:     upstreamParserSpec,
 			expression: `build.state == build.state`,
 			ctx: Context{
 				Build: Build{State: str("passed")},
 			},
-			want: true,
+			wantError: ErrorKindValidation,
 		},
 		{
-			name:       "valid enum comparison can put literal first",
+			name:       "enum comparison rejects literal first",
 			source:     upstreamParserSpec,
 			expression: `"passed" == build.state`,
 			ctx: Context{
 				Build: Build{State: str("passed")},
 			},
-			want: true,
+			wantError: ErrorKindValidation,
 		},
 		{
 			name:       "null includes string evaluates false",
@@ -178,16 +202,16 @@ func TestConditionalEvaluationSemantics(t *testing.T) {
 			want:       true,
 		},
 		{
-			name:       "logical and short-circuits missing variable validation",
+			name:       "logical and still type checks missing variable",
 			source:     upstreamEvaluatorSpec,
 			expression: `false && missing.value == "x"`,
-			want:       false,
+			wantError:  ErrorKindValidation,
 		},
 		{
-			name:       "logical or short-circuits missing variable validation",
+			name:       "logical or still type checks missing variable",
 			source:     upstreamEvaluatorSpec,
 			expression: `true || missing.value == "x"`,
-			want:       true,
+			wantError:  ErrorKindValidation,
 		},
 		{
 			name:       "nested precedence with and before or",
@@ -239,40 +263,40 @@ func TestConditionalEvaluationSemantics(t *testing.T) {
 			wantError:  ErrorKindResult,
 		},
 		{
-			name:       "nullable pointer backed boolean result fails closed",
-			source:     upstreamBuildValidatorSpec,
+			name:       "typed nil boolean result is falsey",
+			source:     upstreamConditionalVariableSpec,
 			expression: `build.fixed`,
-			wantError:  ErrorKindResult,
+			want:       false,
 		},
 		{
-			name:       "nullable context string fails inside array literal",
-			source:     upstreamBuildValidatorSpec,
+			name:       "typed nil string in array literal fails during evaluation",
+			source:     upstreamConditionalVariableSpec,
 			expression: `[build.tag] includes "v1.0"`,
-			wantError:  ErrorKindValidation,
+			wantError:  ErrorKindEvaluation,
 		},
 		{
-			name:       "nullable build env fails inside array literal",
-			source:     upstreamBuildValidatorSpec,
+			name:       "nil build env in array literal fails during evaluation",
+			source:     upstreamBuildConditionSpec,
 			expression: `[build.env("MISSING")] includes "x"`,
-			wantError:  ErrorKindValidation,
+			wantError:  ErrorKindEvaluation,
 		},
 		{
-			name:       "nullable shell expansion fails inside array literal",
-			source:     upstreamBuildValidatorSpec,
+			name:       "nil shell expansion in array literal fails during evaluation",
+			source:     upstreamEvaluatorSpec,
 			expression: `[${notset}] includes "x"`,
-			wantError:  ErrorKindValidation,
+			wantError:  ErrorKindEvaluation,
 		},
 		{
-			name:       "nullable ternary result fails closed",
+			name:       "typed nil ternary result is falsey",
 			source:     upstreamParserSpec,
 			expression: `true ? null : true`,
-			wantError:  ErrorKindResult,
+			want:       false,
 		},
 		{
-			name:       "nullable ternary alternative result fails closed",
+			name:       "typed nil ternary alternative result is falsey",
 			source:     upstreamParserSpec,
 			expression: `false ? true : null`,
-			wantError:  ErrorKindResult,
+			want:       false,
 		},
 		{
 			name:       "nullable pull request boolean can be negated",
@@ -293,14 +317,47 @@ func TestConditionalEvaluationSemantics(t *testing.T) {
 			want:       false,
 		},
 		{
-			name:       "nullable pull request boolean fails before logical evaluation",
+			name:       "nullable pull request boolean is falsey in logical evaluation",
 			source:     docsConditionalsSource,
 			expression: `build.pull_request.draft || false`,
-			wantError:  ErrorKindValidation,
+			want:       false,
 		},
 	}
 
 	runEvaluateCases(t, tests)
+}
+
+func TestConditionalDeclaredTypeValidation(t *testing.T) {
+	tests := []validateCase{
+		{
+			name:       "typed nil boolean validates as boolean",
+			source:     upstreamConditionalVariableSpec,
+			expression: `build.fixed`,
+		},
+		{
+			name:       "typed nil boolean validates in logical expression",
+			source:     upstreamConditionalVariableSpec,
+			expression: `build.pull_request.draft || false`,
+		},
+		{
+			name:       "typed nil string validates against null",
+			source:     upstreamConditionalVariableSpec,
+			expression: `build.tag == null`,
+		},
+		{
+			name:       "null ternary branch validates against boolean branch",
+			source:     upstreamParserSpec,
+			expression: `true ? null : true`,
+		},
+		{
+			name:       "logical expression still validates skipped missing variable",
+			source:     upstreamParserSpec,
+			expression: `false && missing.value == "x"`,
+			wantError:  ErrorKindValidation,
+		},
+	}
+
+	runValidateCases(t, tests)
 }
 
 func TestConditionalShellSubstitutionEvaluation(t *testing.T) {

@@ -112,12 +112,7 @@ func evalConditionalExpression(node *ast.ConditionalExpression, scope Scope) obj
 		return condition
 	}
 
-	conditionVal, ok := condition.(*object.Boolean)
-	if !ok {
-		return newError("conditional condition must be BOOLEAN, got %s", condition.Type())
-	}
-
-	if conditionVal.Value {
+	if isTruthy(condition) {
 		return Eval(node.Consequence, scope)
 	}
 	return Eval(node.Alternative, scope)
@@ -178,19 +173,14 @@ func evalInfixExpression(operator string, left, right object.Object) object.Obje
 }
 
 func evalLogicalExpression(operator string, left object.Object, rightExp ast.Expression, scope Scope) object.Object {
-	leftVal, ok := left.(*object.Boolean)
-	if !ok {
-		return newError("type mismatch: %s %s BOOLEAN", left.Type(), operator)
-	}
-
 	switch operator {
 	case "&&":
-		if !leftVal.Value {
-			return FALSE
+		if !isTruthy(left) {
+			return left
 		}
 	case "||":
-		if leftVal.Value {
-			return TRUE
+		if isTruthy(left) {
+			return left
 		}
 	}
 
@@ -199,12 +189,7 @@ func evalLogicalExpression(operator string, left object.Object, rightExp ast.Exp
 		return right
 	}
 
-	rightVal, ok := right.(*object.Boolean)
-	if !ok {
-		return newError("type mismatch: BOOLEAN %s %s", operator, right.Type())
-	}
-
-	return nativeBoolToBooleanObject(rightVal.Value)
+	return right
 }
 
 func evalBangOperatorExpression(right object.Object) object.Object {
@@ -217,6 +202,17 @@ func evalBangOperatorExpression(right object.Object) object.Object {
 		return TRUE
 	default:
 		return FALSE
+	}
+}
+
+func isTruthy(obj object.Object) bool {
+	switch obj := obj.(type) {
+	case *object.Boolean:
+		return obj.Value
+	case *object.Null:
+		return false
+	default:
+		return true
 	}
 }
 
@@ -331,6 +327,10 @@ func evalArrayInfixExpression(operator string, left, right object.Object) object
 	leftVal := left.(*object.Array)
 
 	switch operator {
+	case "==":
+		return nativeBoolToBooleanObject(left.Equals(right))
+	case "!=":
+		return nativeBoolToBooleanObject(!left.Equals(right))
 	case "includes":
 		contains, err := arrayContains(leftVal, right)
 		if err != nil {

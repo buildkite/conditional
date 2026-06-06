@@ -5,13 +5,14 @@ import "testing"
 const (
 	docsConditionalsSource = "https://buildkite.com/docs/pipelines/configure/conditionals"
 
-	upstreamParserSpec             = "buildkite/buildkite:spec/models/conditional/parser_spec.rb"
-	upstreamEvaluatorSpec          = "buildkite/buildkite:spec/models/conditional/evaluator_spec.rb"
-	upstreamBuildConditionSpec     = "buildkite/buildkite:spec/models/build/condition_spec.rb"
-	upstreamBuildValidatorSpec     = "buildkite/buildkite:spec/validators/build_condition_validator_spec.rb"
-	upstreamBuildNotificationSpec  = "buildkite/buildkite:spec/models/build/notification_spec.rb"
-	upstreamStepNotificationSpec   = "buildkite/buildkite:spec/models/step/notification_spec.rb"
-	upstreamConditionalRegexpModel = "buildkite/buildkite:app/models/conditional/regexp.rb"
+	upstreamParserSpec              = "buildkite/buildkite:spec/models/conditional/parser_spec.rb"
+	upstreamEvaluatorSpec           = "buildkite/buildkite:spec/models/conditional/evaluator_spec.rb"
+	upstreamConditionalVariableSpec = "buildkite/buildkite:spec/models/conditional/variable_spec.rb"
+	upstreamBuildConditionSpec      = "buildkite/buildkite:spec/models/build/condition_spec.rb"
+	upstreamBuildValidatorSpec      = "buildkite/buildkite:spec/validators/build_condition_validator_spec.rb"
+	upstreamBuildNotificationSpec   = "buildkite/buildkite:spec/models/build/notification_spec.rb"
+	upstreamStepNotificationSpec    = "buildkite/buildkite:spec/models/step/notification_spec.rb"
+	upstreamConditionalRegexpModel  = "buildkite/buildkite:app/models/conditional/regexp.rb"
 )
 
 type evaluateCase struct {
