@@ -3,8 +3,8 @@ package conditional
 import (
 	"fmt"
 
-	"github.com/buildkite/conditional/ast"
-	"github.com/buildkite/conditional/evaluator"
+	"github.com/buildkite/conditional/internal/ast"
+	"github.com/buildkite/conditional/internal/evaluator"
 )
 
 type valueKind string

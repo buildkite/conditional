@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/buildkite/conditional/ast"
-	"github.com/buildkite/conditional/lexer"
+	"github.com/buildkite/conditional/internal/ast"
+	"github.com/buildkite/conditional/internal/lexer"
 )
 
 func TestIntegerLiteralExpression(t *testing.T) {

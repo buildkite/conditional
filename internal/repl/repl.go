@@ -5,10 +5,10 @@ import (
 	"io"
 	"os"
 
-	"github.com/buildkite/conditional/evaluator"
-	"github.com/buildkite/conditional/lexer"
-	"github.com/buildkite/conditional/object"
-	"github.com/buildkite/conditional/parser"
+	"github.com/buildkite/conditional/internal/evaluator"
+	"github.com/buildkite/conditional/internal/lexer"
+	"github.com/buildkite/conditional/internal/object"
+	"github.com/buildkite/conditional/internal/parser"
 )
 
 const PROMPT = ">> "

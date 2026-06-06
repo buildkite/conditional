@@ -3,7 +3,7 @@ package lexer
 import (
 	"testing"
 
-	"github.com/buildkite/conditional/token"
+	"github.com/buildkite/conditional/internal/token"
 )
 
 // An example of lexing a single token to get a baseline of lexing performance

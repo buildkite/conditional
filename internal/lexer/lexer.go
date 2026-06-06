@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/buildkite/conditional/token"
+	"github.com/buildkite/conditional/internal/token"
 )
 
 type Lexer struct {

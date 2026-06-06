@@ -86,5 +86,5 @@ The root package is the public Buildkite API:
 * `conditional.Evaluate` evaluates an expression and returns a boolean result.
 * `conditional.Context` defines the Buildkite entry point and available values.
 
-The lexer, parser, and evaluator packages are implementation details derived
-from [Writing an Interpreter in Go](https://interpreterbook.com).
+The internal lexer, parser, and evaluator packages are derived from
+[Writing an Interpreter in Go](https://interpreterbook.com).
