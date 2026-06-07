@@ -121,6 +121,35 @@ func TestCustomFunctionReturnsComparableValue(t *testing.T) {
 	}
 }
 
+func TestCustomFunctionAcceptsEnumStringArgument(t *testing.T) {
+	lower := WithFunction("lower", Function{
+		Args:   []ValueType{StringType},
+		Return: StringType,
+		Eval: func(args []Value) (Value, error) {
+			value, ok := args[0].AsString()
+			if !ok {
+				return NullValue(), errors.New("argument must be a string")
+			}
+			return StringValue(strings.ToLower(value)), nil
+		},
+	})
+
+	ctx := Context{Build: Build{State: str("passed")}}
+	expression := `lower(build.state) == "passed"`
+
+	if err := Validate(expression, ctx, lower); err != nil {
+		t.Fatalf("Validate(%q) returned error: %v", expression, err)
+	}
+
+	got, err := Evaluate(expression, ctx, lower)
+	if err != nil {
+		t.Fatalf("Evaluate(%q) returned error: %v", expression, err)
+	}
+	if !got {
+		t.Fatalf("Evaluate(%q) = false, want true", expression)
+	}
+}
+
 func TestUnknownFunctionStillFailsWithoutOption(t *testing.T) {
 	err := Validate(`starts_with("main", "ma")`, Context{})
 	if !IsErrorKind(err, ErrorKindValidation) {

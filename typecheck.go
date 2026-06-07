@@ -161,11 +161,29 @@ func (c typeChecker) checkCall(expr *ast.CallExpression) (valueType, error) {
 		)
 	}
 	for i, arg := range expr.Arguments {
-		if err := c.expect(arg, signature.args[i]); err != nil {
+		if err := c.expectCallArgument(arg, signature.args[i]); err != nil {
 			return valueType{kind: kindUnknown}, err
 		}
 	}
 	return signature.ret, nil
+}
+
+func (c typeChecker) expectCallArgument(expr ast.Expression, expected valueKind) error {
+	actual, err := c.check(expr)
+	if err != nil {
+		return err
+	}
+	if actual.kind == kindUnknown {
+		return nil
+	}
+	if expected == kindString && actual.kind == kindString {
+		return nil
+	}
+	if actual.enum == nil && actual.kind == expected {
+		return nil
+	}
+
+	return validationError("unexpected type: expected %s but found %s", describeKinds([]valueKind{expected}), actual.describe())
 }
 
 func (c typeChecker) checkComparisonTypes(left, right ast.Expression) (valueType, error) {
