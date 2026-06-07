@@ -30,7 +30,7 @@ Buildkite values that would be available at the selected entrypoint.
   expressions
 * Buildkite identifiers such as `build.branch`
 * Function calls such as `env("FOO")` and `build.env("FOO")`; dotted function
-  names are parsed as flat Buildkite function names
+  names are parsed as flat function names
 * Prefix negation: `!`
 * Array membership: `["foo", "bar"] includes "foo"`
 * Shell-style environment substitution in operands and double-quoted strings
@@ -146,6 +146,58 @@ evaluate to `true`, matching Buildkite notification deliverability.
 Returned errors are `*conditional.Error` values with a stable `Kind`. Parse
 errors also unwrap to the underlying parser errors, so callers can inspect the
 cause with `errors.Unwrap`.
+
+## Extensions
+
+`Validate` and `Evaluate` accept variadic options. With no options, the library
+keeps the Buildkite server-parity contract and rejects unknown functions.
+Callers can opt into additional functions for their own expression surface.
+`Context` remains the per-call Buildkite state; options configure evaluator
+capabilities.
+
+Use per-call options when a custom function is only needed in one place:
+
+```go
+startsWith := conditional.WithFunction("starts_with", conditional.Function{
+	Args:   []conditional.ValueType{conditional.StringType, conditional.StringType},
+	Return: conditional.BoolType,
+	Eval: func(args []conditional.Value) (conditional.Value, error) {
+		value, _ := args[0].AsString()
+		prefix, _ := args[1].AsString()
+		return conditional.BoolValue(strings.HasPrefix(value, prefix)), nil
+	},
+})
+
+ok, err := conditional.Evaluate(
+	`starts_with(build.branch, "release/")`,
+	ctx,
+	startsWith,
+)
+```
+
+Use `NewEvaluator` when the same options should be reused across many
+validations or evaluations:
+
+```go
+evaluator, err := conditional.NewEvaluator(startsWith)
+if err != nil {
+	log.Fatal(err)
+}
+
+ok, err := evaluator.Evaluate(
+	`starts_with(build.branch, "release/")`,
+	ctx,
+)
+```
+
+`NewEvaluator` validates options once. The zero value `Evaluator` has no custom
+functions and behaves like the package-level Buildkite-parity helpers.
+
+Custom functions are type-checked before evaluation. Function arguments and
+return values use the exported `Value` and `ValueType` APIs, so callers do not
+depend on internal evaluator objects. The `build`, `env`, `organization`,
+`pipeline`, and `step` roots are reserved for Buildkite values and built-in
+functions.
 
 ## Usage
 

@@ -14,11 +14,32 @@ import (
 )
 
 // Validate parses expression for the selected Buildkite context.
-func Validate(expression string, ctx Context) error {
+func Validate(expression string, ctx Context, opts ...Option) error {
 	entryPoint, err := normalizeEntryPoint(ctx.EntryPoint)
 	if err != nil {
 		return err
 	}
+	options, err := applyOptions(opts)
+	if err != nil {
+		return err
+	}
+	return validate(expression, ctx, entryPoint, options)
+}
+
+// Evaluate evaluates expression in the selected Buildkite context.
+func Evaluate(expression string, ctx Context, opts ...Option) (bool, error) {
+	entryPoint, err := normalizeEntryPoint(ctx.EntryPoint)
+	if err != nil {
+		return false, err
+	}
+	options, err := applyOptions(opts)
+	if err != nil {
+		return false, err
+	}
+	return evaluateWithOptions(expression, ctx, entryPoint, options)
+}
+
+func validate(expression string, ctx Context, entryPoint EntryPoint, options optionSet) error {
 	if strings.TrimSpace(expression) == "" {
 		return nil
 	}
@@ -28,38 +49,31 @@ func Validate(expression string, ctx Context) error {
 		return err
 	}
 	ctx.EntryPoint = entryPoint
-	return validateExpression(expr, ctx)
+	return validateExpression(expr, ctx, options)
 }
 
-// Evaluate evaluates expression in the selected Buildkite context.
-func Evaluate(expression string, ctx Context) (bool, error) {
-	entryPoint, err := normalizeEntryPoint(ctx.EntryPoint)
-	if err != nil {
-		return false, err
-	}
-	ctx.EntryPoint = entryPoint
-
+func evaluateWithOptions(expression string, ctx Context, entryPoint EntryPoint, options optionSet) (bool, error) {
 	if strings.TrimSpace(expression) == "" && isNotificationEntryPoint(entryPoint) {
 		return true, nil
 	}
 
-	result, err := evaluate(expression, ctx)
+	result, err := evaluate(expression, ctx, options)
 	if err != nil && isNotificationEntryPoint(entryPoint) {
 		return false, nil
 	}
 	return result, err
 }
 
-func evaluate(expression string, ctx Context) (bool, error) {
+func evaluate(expression string, ctx Context, options optionSet) (bool, error) {
 	expr, err := parse(expression)
 	if err != nil {
 		return false, err
 	}
-	if err := validateExpression(expr, ctx); err != nil {
+	if err := validateExpression(expr, ctx, options); err != nil {
 		return false, err
 	}
 
-	result := evaluator.Eval(expr, buildScope(ctx))
+	result := evaluator.Eval(expr, buildScope(ctx, options))
 	switch result := result.(type) {
 	case *object.Boolean:
 		return result.Value, nil
@@ -102,7 +116,7 @@ func joinErrorMessages(errs []error) string {
 	return strings.Join(messages, "; ")
 }
 
-func validateExpression(expr ast.Expression, ctx Context) error {
+func validateExpression(expr ast.Expression, ctx Context, options optionSet) error {
 	entryPoint := ctx.EntryPoint
 	if !stepAllowed(entryPoint) && referencesRoot(expr, "step") {
 		return &Error{
@@ -113,7 +127,7 @@ func validateExpression(expr ast.Expression, ctx Context) error {
 	if err := validateEnvCalls(expr); err != nil {
 		return err
 	}
-	return typeCheckExpression(expr, ctx)
+	return typeCheckExpression(expr, ctx, options)
 }
 
 func validateEnvCalls(expr ast.Expression) error {
@@ -229,12 +243,15 @@ func (s evaluationScope) LookupEnv(key string) (string, bool) {
 	return value, ok
 }
 
-func buildScope(ctx Context) evaluationScope {
+func buildScope(ctx Context, options optionSet) evaluationScope {
 	env := mergedEnv(ctx)
 
 	scope := object.Struct{
 		"env":       envFunction(env),
 		"build.env": nullableEnvFunction(env),
+	}
+	for name, function := range options.functions {
+		scope[name] = function.objectFunction(name)
 	}
 	for key, value := range flatAssignments(ctx) {
 		scope[key] = value
