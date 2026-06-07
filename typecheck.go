@@ -39,10 +39,10 @@ type typeChecker struct {
 	functions map[string]functionSignature
 }
 
-func typeCheckExpression(expr ast.Expression, ctx Context) error {
+func typeCheckExpression(expr ast.Expression, ctx Context, options optionSet) error {
 	checker := typeChecker{
 		variables: variableTypes(ctx),
-		functions: functionTypes(),
+		functions: functionTypes(options),
 	}
 
 	got, err := checker.check(expr)
@@ -274,8 +274,8 @@ func variableTypes(ctx Context) map[string]valueType {
 	return variables
 }
 
-func functionTypes() map[string]functionSignature {
-	return map[string]functionSignature{
+func functionTypes(options optionSet) map[string]functionSignature {
+	functions := map[string]functionSignature{
 		"env": {
 			args: []valueKind{kindString},
 			ret:  stringType(),
@@ -285,6 +285,15 @@ func functionTypes() map[string]functionSignature {
 			ret:  stringType(),
 		},
 	}
+	for name, function := range options.functions {
+		signature, err := function.signature()
+		if err != nil {
+			continue
+		}
+		functions[name] = signature
+	}
+
+	return functions
 }
 
 func stringType() valueType {
